@@ -656,3 +656,38 @@ false-positive did; (2) a background task's "completed, exit code 0" notificatio
 describes the wrapper, not necessarily the real work inside it -- worth reading the
 actual captured output before reporting success to the student, which is now the
 default habit for the rest of this session.
+
+---
+
+## 2026-08-17 — Smoke test extended to efficientnetb4 and vgg16
+
+**What happened:** Student asked to run the new integration smoke test against the
+other two architectures, not just resnet50. Parametrized
+`test_train_evaluate_explain_roundtrip_on_real_data_subset` over
+`["resnet50", "efficientnetb4", "vgg16"]` rather than writing separate test functions,
+and re-ran it on the pod filtered to the two new architectures (`-k
+'efficientnetb4 or vgg16'`, resnet50 already confirmed in the previous entry). Both
+passed for real (216.72s total, genuine exit code 0 checked explicitly, not inferred
+from the background wrapper).
+
+This closes the remaining architecture-specific gap noted in the previous entry:
+`config.BACKBONE_LAYER_NAME` and `config.LAST_CONV_LAYER` are now confirmed correct
+(save/reload backbone retrieval, Grad-CAM target layer) for **all three** architectures,
+not just resnet50 -- these were architecture-specific values that could plausibly have
+been wrong for one of the three without the resnet50-only run catching it.
+
+**Where uncertain / stuck:** None new -- same remaining gaps as the previous entry
+still stand: the binary task's DDI-oversampling code path
+(`make_oversampled_binary_dataset`, `binary_corpus.build_binary_corpus` feeding a real
+combined batch) and SHAP against a real trained model are still not runtime-tested.
+
+**Assumptions made:** None beyond the previous entry's.
+
+**How output was verified:** Real pytest run on the pod, real log tail read directly
+(not the background-task wrapper's summary), explicit `EXIT_CODE:$?` line confirmed 0.
+
+**What was learned / should change next time:** Parametrizing the existing test over
+`architecture` was less work and more valuable than writing three near-duplicate test
+functions would have been, and it means any future fourth architecture only needs
+adding to one list. Worth defaulting to parametrization over copy-paste whenever a test
+is "the same steps, different constant" like this one was.

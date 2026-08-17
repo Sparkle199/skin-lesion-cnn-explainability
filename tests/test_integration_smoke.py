@@ -33,8 +33,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_train_evaluate_explain_roundtrip_on_real_data_subset(tmp_path):
-    architecture = "resnet50"
+@pytest.mark.parametrize("architecture", ["resnet50", "efficientnetb4", "vgg16"])
+def test_train_evaluate_explain_roundtrip_on_real_data_subset(tmp_path, architecture):
     image_size = config.IMAGE_SIZE[architecture]
     batch_size = 8
 
