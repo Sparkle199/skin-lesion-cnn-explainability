@@ -31,6 +31,17 @@ native `dx` column (one of `SEVEN_CLASSES` in `src/config.py`) as the label.
 3. Result is a combined corpus with a `source` column (`"ham10000"` or `"ddi"`) so
    downstream stages (imbalance handling, evaluation) can distinguish rows by origin.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["train_df / val_df<br/>HAM10000, dx label"] --> B["Relabel dx -> binary_label<br/>malignant = akiec, bcc, mel<br/>benign = bkl, df, nv, vasc"]
+    C["ddi_train / ddi_val<br/>native malignant boolean"] --> D["Used directly --<br/>no seven-class mapping"]
+    B --> E["build_binary_corpus()"]
+    D --> E
+    E --> F["train_binary / val_binary<br/>binary_label + source column"]
+```
+
 ## Outputs
 - `train_binary`, `val_binary` — combined HAM10000+DDI corpora with a unified
   `binary_label` column and a `source` column.

@@ -28,6 +28,32 @@ expects, so every downstream module can find them without path changes.
    relative to the working directory). Extract once onto persistent storage — don't
    re-extract the 3.2GB archive on every pod restart.
 
+## Diagram
+
+```mermaid
+flowchart LR
+    subgraph Local["Local machine (gitignored)"]
+        Z1["archive (1).zip -- 3.2GB"]
+        Z2["ddidiversedermatologyimages.zip -- 237MB"]
+    end
+    subgraph Extracted["data/raw/ (PROJECT_DATA_DIR)"]
+        H1["dataverse_files/HAM10000_images_combined_600x450/"]
+        H2["dataverse_files/HAM10000_metadata"]
+        H3["dataverse_files/HAM10000_segmentations_lesion_tschandl/"]
+        H4["dataverse_files/ISIC2018_Task3_Test_Images/"]
+        H5["dataverse_files/ISIC2018_Task3_Test_GroundTruth.csv"]
+        D1["ddi/ -- 656 images"]
+        D2["ddi/ddi_metadata.csv"]
+    end
+    Z1 --> H1
+    Z1 --> H2
+    Z1 --> H3
+    Z1 --> H4
+    Z1 --> H5
+    Z2 --> D1
+    Z2 --> D2
+```
+
 ## Outputs
 A populated `data/raw/` tree (or whatever `PROJECT_DATA_DIR` points to) matching the
 paths in `src/config.py`.

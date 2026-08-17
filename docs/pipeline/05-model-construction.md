@@ -40,6 +40,20 @@ preprocessing function separately, so the XAI modules (Stage 7–8) can feed
 correctly-preprocessed images directly to a model's backbone without duplicating the
 architecture→preprocessing mapping.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Input image"] --> B["preprocess_input<br/>architecture-specific"]
+    B --> C["Backbone<br/>ResNet-50 / EfficientNetB4 / VGG-16<br/>ImageNet-pretrained, frozen"]
+    C --> D["Dropout(0.3)"]
+    D --> E{"num_classes"}
+    E -->|2| F["Dense(1, sigmoid)<br/>binary task"]
+    E -->|7| G["Dense(7, softmax)<br/>seven-class task"]
+
+    C -.unfreeze_top_layers, Stage 6.-> H["Top N backbone layers<br/>trainable in fine-tune phase<br/>BatchNorm layers stay frozen"]
+```
+
 ## Outputs
 - `model` (compiled in Stage 6, not here — this stage only constructs the graph).
 - `base` — reference to the backbone submodel, needed by Stage 6.

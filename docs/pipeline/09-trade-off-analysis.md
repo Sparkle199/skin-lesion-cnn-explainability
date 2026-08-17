@@ -40,6 +40,22 @@ dissertation, not something to automate away — this is the honest way to satis
 Objective 5 ("determining the optimal CNN model... balancing both aspects") without
 hiding a value judgement inside arbitrary metric weights.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["results/*.json (up to 6 files)"] --> B["load_results()"]
+    B --> C["build_comparison_table()<br/>accuracy, kappa, ISIC, faithfulness,<br/>binary accuracy, skin-tone spread"]
+    C --> D["rank_by(seven_class_accuracy)"]
+    C --> E["rank_by(faithfulness_iou)"]
+    D --> F{"Top architecture<br/>same on both?"}
+    E --> F
+    F -->|Yes| G["Report: leads on both --<br/>confirm once all 6 runs complete"]
+    F -->|No| H["Report trade-off explicitly --<br/>defer choice to student/supervisor"]
+    G --> I["results/trade_off_summary.json"]
+    H --> I
+```
+
 ## CLI usage
 ```
 python -m src.trade_off --results-dir results/

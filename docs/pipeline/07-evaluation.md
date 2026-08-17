@@ -39,6 +39,25 @@ for its task, plus the quantitative Grad-CAM faithfulness check.
    — not expected in practice here, since both tasks' validation sets include HAM10000,
    but the code guards for it.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Load models/{architecture}_{task}.keras"] --> B["predict_dataset() on val set"]
+    B --> C["evaluate_predictions()<br/>accuracy, precision, recall, F1, ROC-AUC, kappa"]
+    B --> D{"task"}
+    D -->|seven_class| E["predict on ISIC2018 held-out set"]
+    E --> F["evaluate_predictions()<br/>-> isic2018_test"]
+    D -->|binary| G["stratified_binary_metrics()<br/>DDI rows only, by skin_tone_group"]
+    C --> H["Sample HAM10000 rows<br/>up to 30"]
+    H --> I["make_gradcam_heatmap() per sample"]
+    I --> J["mean_overlap() vs. ground-truth masks<br/>-> faithfulness: mean_iou, mean_dice"]
+    C --> K["results/{architecture}_{task}.json"]
+    F --> K
+    G --> K
+    J --> K
+```
+
 ## CLI usage
 ```
 python -m src.evaluate_run --architecture resnet50 --task seven_class \

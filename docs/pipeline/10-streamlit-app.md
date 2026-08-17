@@ -43,6 +43,29 @@ and its rationale explicitly in Chapter 3.
   trade-off conclusion, just display it, to avoid the app and the dissertation text
   drifting out of sync with each other.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph Data["Pre-computed artifacts"]
+        M["models/*.keras"]
+        R["results/*.json"]
+        T["results/trade_off_summary.json"]
+        O["Saved Grad-CAM / SHAP overlays"]
+    end
+
+    subgraph App["Streamlit app"]
+        P1["Page 1: Single-image demo<br/>upload -> predict -> live Grad-CAM"]
+        P2["Page 2: Model comparison<br/>metrics tables/charts"]
+        P3["Page 3: Trade-off view<br/>renders trade-off summary"]
+    end
+
+    M --> P1
+    O --> P1
+    R --> P2
+    T --> P3
+```
+
 ## Practical constraint: model hosting
 `models/*.keras` files are `.gitignore`d (likely several hundred MB each per
 architecture) and are **not** in the GitHub repository. The app needs a way to access

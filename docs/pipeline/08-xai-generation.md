@@ -40,6 +40,26 @@ Grad-CAM/SHAP attention zones plausibly align with the lesion, rather than a sco
 IoU/Dice number. This is why saving overlay images (not just raw arrays) matters for
 DDI specifically — the qualitative check *is* the saved image.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Trained model"] --> B["build_explainer()<br/>SHAP Image masker, black-box predict"]
+    B --> C["explain_images()<br/>max_evals=500"]
+    C --> D["SHAP attribution maps"]
+
+    A --> E["make_gradcam_heatmap()"]
+    E --> F["overlay_heatmap()"]
+
+    D --> G["Saved overlay --<br/>.../{image_id}_shap.png"]
+    F --> H["Saved overlay --<br/>.../{image_id}_gradcam.png"]
+
+    G -.HAM10000 sample.-> I["Scorable: IoU/Dice vs. mask (Stage 7)"]
+    G -.DDI sample.-> J["Qualitative only --<br/>no ground-truth mask"]
+    H -.HAM10000 sample.-> I
+    H -.DDI sample.-> J
+```
+
 ## Outputs (once the missing script is written)
 - Saved Grad-CAM + SHAP overlay images per model, covering both a HAM10000 sample
   (faithfulness-scorable, Stage 7) and a DDI sample (qualitative-only).

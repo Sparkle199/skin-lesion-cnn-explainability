@@ -26,6 +26,19 @@ stated Kaggle GPU infrastructure.
   competitive or lower, while finishing runs faster against a fixed dissertation
   deadline.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Workload: 3 CNNs x 2 tasks<br/>~10k images, transfer learning"] --> B{"Compute-bound<br/>or memory-bound?"}
+    B -->|Compute-bound| C["24GB VRAM tier is sufficient"]
+    B -.->|"if memory-bound"| D["Rejected: A100 / H100 / H200 / B200<br/>VRAM and cost unjustified for this workload"]
+    C --> E{"Hourly rate vs.<br/>throughput?"}
+    E --> F["RTX A5000 -- $0.27/hr<br/>lower rate, lower throughput"]
+    E --> G["RTX 4090 -- $0.99/hr<br/>higher rate, higher throughput"]
+    G --> H["Selected: lower total $ per run,<br/>finishes faster against fixed deadline"]
+```
+
 ## Action needed
 This is a deviation from the approved proposal document (which states "Kaggle GPU
 infrastructure"). Confirm with the supervisor that a paid cloud GPU provider is an

@@ -42,6 +42,21 @@ shuffle of the combined corpus. Instead:
   training-only correction; evaluating on an artificially rebalanced validation set
   would misrepresent real-world performance.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["train_df (seven-class)<br/>~67% class nv"] --> B["compute_class_weights()"]
+    B --> C["class_weight dict -> model.fit()"]
+
+    D["train_binary<br/>HAM10000 ~94% / DDI ~6% by volume"] --> E["compute_class_weights()"]
+    E --> C
+    D --> F["make_oversampled_binary_dataset()<br/>ddi_fraction = 0.3"]
+    F --> G["Training batch:<br/>~70% HAM10000, ~30% DDI"]
+    D --> H["make_dataset(training=False)<br/>true, un-oversampled distribution"]
+    H --> I["Validation set --<br/>used for Stage 7 evaluation"]
+```
+
 ## Outputs
 - `class_weight` dict (both tasks), passed to `model.fit()`.
 - `train_ds` (binary task: oversampled at `ddi_fraction`; seven-class task: plain

@@ -27,6 +27,19 @@ consistent two-phase transfer-learning procedure.
    dataset + `steps_per_epoch` (Stage 4); the seven-class task uses the plain augmented
    dataset with `steps_per_epoch=None` (Keras infers it from dataset size).
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["build_model()<br/>backbone frozen"] --> B["Phase 1: frozen-head warmup<br/>Adam lr=1e-3, epochs_frozen=5"]
+    B --> C["unfreeze_top_layers(base, 30)<br/>BatchNorm layers stay frozen"]
+    C --> D["Phase 2: fine-tune<br/>Adam lr=1e-5, epochs_finetune=10"]
+    D --> E["models/{architecture}_{task}.keras"]
+
+    F["class_weight, train_ds,<br/>steps_per_epoch (binary only)"] --> B
+    F --> D
+```
+
 ## CLI usage
 ```
 python -m src.train --architecture resnet50 --task seven_class

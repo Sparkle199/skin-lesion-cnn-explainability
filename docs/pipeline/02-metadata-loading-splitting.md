@@ -30,6 +30,26 @@ both the seven-class task and (after relabelling) the binary task. This means no
 lesion appears in one task's training set and the other task's validation set — a
 deliberate design choice, not an accident of code reuse.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    A["HAM10000_metadata<br/>10,015 images / 7,470 lesions"] --> B["load_metadata()"]
+    B --> C["lesion_level_split()<br/>split by lesion_id, not image_id"]
+    C --> D["train_df"]
+    C --> E["val_df"]
+    D -.no shared lesion_id.-> E
+
+    F["ddi_metadata.csv<br/>656 images"] --> G["ddi.load_metadata()"]
+    G --> H["split_ddi()"]
+    H --> I["ddi_train"]
+    H --> J["ddi_val"]
+
+    D --> K["Seven-class task<br/>uses train_df / val_df directly"]
+    D --> L["Binary task<br/>relabelled in Stage 3"]
+    I --> L
+```
+
 ## Outputs
 - `train_df`, `val_df` — lesion-level HAM10000 split (used directly by the seven-class
   task, and as the HAM10000 half of the binary task after relabelling).
