@@ -1,7 +1,8 @@
 import cv2
+import pandas as pd
 
 from src import config
-from src.data.ham10000 import lesion_level_split, load_segmentation_mask
+from src.data.ham10000 import lesion_level_split, load_isic2018_test, load_segmentation_mask
 
 
 def test_lesion_level_split_has_no_lesion_overlap(synthetic_ham10000_df):
@@ -51,3 +52,29 @@ def test_load_segmentation_mask_missing_file_raises(monkeypatch, tmp_path):
         assert False, "expected FileNotFoundError"
     except FileNotFoundError:
         pass
+
+
+def test_load_isic2018_test_drops_rows_with_no_matching_image_file(monkeypatch, tmp_path, capsys):
+    # Mirrors a real gap found in the official release: ISIC_0035068 is listed in the
+    # ground-truth CSV but has no corresponding file in ISIC2018_Task3_Test_Images/.
+    csv_path = tmp_path / "ISIC2018_Task3_Test_GroundTruth.csv"
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+
+    pd.DataFrame(
+        {
+            "lesion_id": ["HAMTEST_0000001", "HAMTEST_0000002"],
+            "image_id": ["ISIC_0000001", "ISIC_0000002"],
+            "dx": ["nv", "mel"],
+        }
+    ).to_csv(csv_path, index=False)
+    (image_dir / "ISIC_0000001.jpg").write_bytes(b"fake-jpeg-bytes")
+    # ISIC_0000002.jpg deliberately not created -- simulates the missing-file gap.
+
+    monkeypatch.setattr(config, "ISIC2018_TEST_GROUNDTRUTH_CSV", csv_path)
+    monkeypatch.setattr(config, "ISIC2018_TEST_IMAGE_DIR", image_dir)
+
+    df = load_isic2018_test()
+
+    assert list(df["image_id"]) == ["ISIC_0000001"]
+    assert "dropping 1 row" in capsys.readouterr().out

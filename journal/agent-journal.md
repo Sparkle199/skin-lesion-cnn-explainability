@@ -741,3 +741,106 @@ concatenating multiple sources, `.head(n)` is only safe if the caller knows (or 
 the concatenation order -- worth defaulting to an explicit per-group slice whenever a
 test needs guaranteed representation from more than one source, rather than assuming
 row order.
+
+---
+
+## 2026-08-17 — Real 6-run training schedule launched; found and fixed a genuine data gap
+
+**What happened:** Student asked to move to the real training schedule. Wrote
+`scripts/run_all_training.sh` (all 6 architecture/task combinations, sequential --
+single GPU, train then immediately evaluate each pair, then trade-off analysis at the
+end) and launched it detached on the pod (`nohup ... & disown`, redirected stdin/stdout/
+stderr) so it survives an SSH disconnect during a multi-hour run.
+
+While monitoring progress (filtering the noisy per-step progress-bar log lines with
+grep rather than reading raw tail output), found that `resnet50/seven_class`'s
+*training* succeeded but its *evaluation* step failed
+(`EVAL_EXIT_CODE[resnet50/seven_class]=1`), while `resnet50/binary`'s evaluation right
+after it succeeded -- pointing at something specific to the seven-class-only code path
+(the ISIC2018 held-out test set evaluation, which only runs for that task). The actual
+error: `tensorflow.python.framework.errors_impl.NotFoundError` on
+`ISIC_0035068.jpg`. Diffed every image_id in `ISIC2018_Task3_Test_GroundTruth.csv`
+against the actual files in `ISIC2018_Task3_Test_Images/` (`comm -23`/`comm -13`) rather
+than assuming this was an extraction mistake: confirmed exactly one row
+(`ISIC_0035068`) has no corresponding file, and zero extra files exist -- a genuine gap
+in the official dataset release itself (both this project's own earlier archive
+inspection on 2026-07-31 and the extraction on 2026-08-17 already confirmed the file
+counts, 1,511 images matching 1,511 CSV rows on the surface, but a 1:1 identity check
+is different from a count check and this is exactly why the count check alone missed
+it).
+
+Fixed `src.data.ham10000.load_isic2018_test()` to check each row's image file exists
+and drop any that don't, with a printed count/list of what was dropped rather than a
+silent fix -- this turns a training-time crash into an explicit, logged data-loading
+decision. Added `test_load_isic2018_test_drops_rows_with_no_matching_image_file`
+(synthetic CSV + one real, one deliberately-missing file) to `tests/test_ham10000.py`;
+all 6 tests in that file pass locally. Pushed the fix to the pod while
+`efficientnetb4/seven_class` was still mid-training (a separate already-running Python
+process, unaffected -- the fix only needed to land before that combination's *own*
+evaluation step, which happens as a fresh process later in the same shell script) and
+manually re-ran the failed `resnet50/seven_class` evaluation to backfill the missing
+result rather than waiting for a full second pass.
+
+**Where uncertain / stuck:** Whether `ISIC_0035068` being missing reflects a licensing/
+consent withdrawal from the official release (a plausible, common reason a specific
+image gets pulled from a redistributed medical dataset after initial publication) or
+some other cause is not established -- not investigated further since it doesn't change
+the correct handling (drop the row, log it, move on), but worth a one-line mention in
+Chapter 4 that one ISIC2018 test image was unavailable and excluded, for completeness.
+
+**Assumptions made:** That checking `Path.exists()` per-row (1,511 rows) is cheap
+enough to do unconditionally on every call rather than caching or pre-computing --
+correct for this dataset's scale, would need revisiting only for a much larger test set.
+
+**How output was verified:** The `comm` diff against real extracted files (not assumed
+from the earlier count-only check), the local test run (6/6 pass), and the retry
+evaluation launched on the pod after pushing the fix (result pending at the time of
+writing this entry -- see whether a following entry confirms it passed).
+
+**What was learned / should change next time:** A file-count match (1,511 images,
+1,511 CSV rows) is not the same guarantee as an identity match (the *same* 1,511 IDs on
+both sides) -- worth doing an explicit `comm`/set-difference check, not just a `wc -l`
+comparison, whenever two independently-sourced file lists are expected to correspond
+1:1, especially for a dataset (like this one) assembled from an official release that
+wasn't produced by this project and so can't be assumed internally consistent.
+
+---
+
+## 2026-08-17 — Retry evaluations run concurrently with training; one genuine OOM
+
+**What happened:** Manually retried the two seven-class evaluations that failed on the
+pre-fix ISIC2018 bug, backfilling results without waiting for a full second pass of the
+whole schedule. `resnet50/seven_class` retry, run while `efficientnetb4/binary` was
+mid-training on the same GPU, succeeded (`results/resnet50_seven_class.json` written) --
+TensorFlow logged benign "ran out of memory trying to allocate ... this is not a
+failure" backoff warnings but completed correctly. `efficientnetb4/seven_class` retry,
+run while `vgg16/seven_class` had just started training, failed for real:
+`tensorflow.python.framework.errors_impl.ResourceExhaustedError: Out of memory while
+trying to allocate 16.00MiB` during `model.predict`. Unlike the resnet50 case, this was
+a hard crash, not a logged-but-handled warning -- EfficientNetB4 at its native 380x380
+input needs meaningfully more VRAM than resnet50/vgg16 at 224x224, and stacking it
+against a concurrently-training job pushed past the RTX 4090's 24GB.
+
+**Where uncertain / stuck:** Not yet retried again -- deliberately waiting for the main
+`run_all_training.sh` script to reach `ALL_DONE` (GPU fully idle) before retrying
+`efficientnetb4/seven_class` a second time, rather than guessing at a "probably safe"
+concurrent moment.
+
+**Assumptions made:** That evaluation-only workloads (`model.predict`, no gradient
+computation) are meaningfully lighter than training and therefore usually safe to run
+concurrently with a training job -- true for resnet50 in this instance, false for
+efficientnetb4. Revising this assumption going forward: only run manual/retry
+evaluations concurrently with training for the two smaller (224x224) architectures, not
+efficientnetb4, and prefer waiting for GPU idle time when in doubt.
+
+**How output was verified:** Read the actual retry log tail directly (not inferred from
+the background wrapper's exit code) for both retries -- the resnet50 success and the
+efficientnetb4 failure were both confirmed from real log content, consistent with the
+verification discipline established earlier in this session.
+
+**What was learned / should change next time:** "It's just inference, should be safe to
+run alongside training" is architecture-dependent, not a general rule -- EfficientNetB4's
+larger input resolution makes its memory footprint meaningfully different from the other
+two architectures even at inference time. Worth treating GPU-idle as the default
+assumption for anything involving efficientnetb4, and treating concurrent runs for the
+other two as an explicit, considered exception rather than a default habit.

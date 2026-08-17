@@ -1,5 +1,7 @@
 """Loading and lesion-level splitting for HAM10000 (primary, seven-class task)."""
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -41,11 +43,28 @@ def lesion_level_split(
 
 
 def load_isic2018_test() -> pd.DataFrame:
-    """Load the official ISIC2018 Task 3 held-out test set (lesion-disjoint from HAM10000)."""
+    """Load the official ISIC2018 Task 3 held-out test set (lesion-disjoint from HAM10000).
+
+    The ground-truth CSV and the image archive are not perfectly 1:1 in the released
+    data: at least one row (ISIC_0035068, confirmed by direct inspection) has no
+    corresponding image file in ISIC2018_Task3_Test_Images/, a gap in the official
+    release itself rather than an extraction error (the folder's own file count matches
+    its own contents exactly; the CSV simply lists one row the archive doesn't back).
+    Dropping such rows here, rather than letting the tf.data pipeline hit a NotFoundError
+    mid-evaluation, keeps this an explicit, logged data-loading decision instead of a
+    training-time crash.
+    """
     df = pd.read_csv(config.ISIC2018_TEST_GROUNDTRUTH_CSV)
     df["image_path"] = df["image_id"].apply(
         lambda image_id: str(config.ISIC2018_TEST_IMAGE_DIR / f"{image_id}.jpg")
     )
+    missing = ~df["image_path"].apply(lambda p: Path(p).is_file())
+    if missing.any():
+        print(
+            f"load_isic2018_test: dropping {missing.sum()} row(s) with no matching image "
+            f"file: {df.loc[missing, 'image_id'].tolist()}"
+        )
+        df = df[~missing].reset_index(drop=True)
     return df
 
 
