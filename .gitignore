@@ -1,0 +1,47 @@
+# --- Datasets / large archives ---
+*.zip
+*.tar
+*.tar.gz
+*.7z
+/data/
+/datasets/
+/HAM10000*/
+/ddi*/
+*.npz
+
+# --- Reference docs (not source, kept locally / submitted separately) ---
+AI_Coding_Governance_MSc (1).pdf
+project proposal- 30137304.docx
+
+# --- Python caches ---
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Model artifacts / training outputs ---
+*.h5
+*.keras
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+runs/
+logs/
+wandb/
+mlruns/
+
+# --- Notebooks ---
+.ipynb_checkpoints/
+
+# --- OS / editor junk ---
+.DS_Store
+Thumbs.db
+.idea/
