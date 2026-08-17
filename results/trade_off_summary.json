@@ -1,0 +1,35 @@
+{
+  "comparison_table": [
+    {
+      "architecture": "resnet50",
+      "seven_class_accuracy": 0.6577181208053692,
+      "seven_class_kappa": 0.4700951374133474,
+      "isic2018_test_accuracy": 0.657180675049636,
+      "faithfulness_iou": 0.25272085454947213,
+      "faithfulness_dice": 0.37245939569759096,
+      "binary_accuracy": 0.81686595342983,
+      "binary_skin_tone_accuracy_spread": 0.15120967741935487
+    },
+    {
+      "architecture": "efficientnetb4",
+      "seven_class_accuracy": 0.6295302013422819,
+      "seven_class_kappa": 0.43118837147864186,
+      "isic2018_test_accuracy": 0.613500992720053,
+      "faithfulness_iou": 0.23939316301297683,
+      "faithfulness_dice": 0.36014345201312736,
+      "binary_accuracy": 0.7432347388294525,
+      "binary_skin_tone_accuracy_spread": 0.1875
+    },
+    {
+      "architecture": "vgg16",
+      "seven_class_accuracy": 0.6395973154362417,
+      "seven_class_kappa": 0.44680550975157995,
+      "isic2018_test_accuracy": 0.6631369953673064,
+      "faithfulness_iou": 0.1958253977314511,
+      "faithfulness_dice": 0.30169187591582997,
+      "binary_accuracy": 0.8149779735682819,
+      "binary_skin_tone_accuracy_spread": 0.1353046594982079
+    }
+  ],
+  "summary": "Ranked by seven-class accuracy (highest first): ['resnet50', 'vgg16', 'efficientnetb4']\nRanked by XAI faithfulness / mean IoU (highest first): ['resnet50', 'efficientnetb4', 'vgg16']\n'resnet50' leads on both accuracy and faithfulness among the architectures evaluated so far -- worth confirming this holds once all six (architecture, task) runs are available."
+}

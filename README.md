@@ -146,16 +146,23 @@ table below) whenever that stage's implementation changes.
 | # | Stage | Status | Doc |
 |---|---|---|---|
 | 0 | Infrastructure | Decided (Runpod, RTX 4090) | [`docs/pipeline/00-infrastructure.md`](docs/pipeline/00-infrastructure.md) |
-| 1 | Data acquisition | Manual step, not yet automated | [`docs/pipeline/01-data-acquisition.md`](docs/pipeline/01-data-acquisition.md) |
-| 2 | Metadata loading & splitting | Implemented | [`docs/pipeline/02-metadata-loading-splitting.md`](docs/pipeline/02-metadata-loading-splitting.md) |
-| 3 | Task corpus construction | Implemented | [`docs/pipeline/03-task-corpus-construction.md`](docs/pipeline/03-task-corpus-construction.md) |
-| 4 | Imbalance handling | Implemented | [`docs/pipeline/04-imbalance-handling.md`](docs/pipeline/04-imbalance-handling.md) |
-| 5 | Model construction | Implemented | [`docs/pipeline/05-model-construction.md`](docs/pipeline/05-model-construction.md) |
-| 6 | Training | Implemented, not yet run on Runpod | [`docs/pipeline/06-training.md`](docs/pipeline/06-training.md) |
-| 7 | Evaluation | Implemented, not yet run | [`docs/pipeline/07-evaluation.md`](docs/pipeline/07-evaluation.md) |
-| 8 | XAI generation | Partially implemented (SHAP module exists; no saved-overlay step yet) | [`docs/pipeline/08-xai-generation.md`](docs/pipeline/08-xai-generation.md) |
-| 9 | Trade-off analysis | Implemented, not yet run (depends on Stage 7 outputs) | [`docs/pipeline/09-trade-off-analysis.md`](docs/pipeline/09-trade-off-analysis.md) |
+| 1 | Data acquisition | **Complete** — both archives extracted on the pod, verified against `config.py` | [`docs/pipeline/01-data-acquisition.md`](docs/pipeline/01-data-acquisition.md) |
+| 2 | Metadata loading & splitting | Implemented, exercised for real in the 2026-08-17 run | [`docs/pipeline/02-metadata-loading-splitting.md`](docs/pipeline/02-metadata-loading-splitting.md) |
+| 3 | Task corpus construction | Implemented, exercised for real in the 2026-08-17 run | [`docs/pipeline/03-task-corpus-construction.md`](docs/pipeline/03-task-corpus-construction.md) |
+| 4 | Imbalance handling | Implemented, exercised for real in the 2026-08-17 run | [`docs/pipeline/04-imbalance-handling.md`](docs/pipeline/04-imbalance-handling.md) |
+| 5 | Model construction | Implemented, exercised for real in the 2026-08-17 run | [`docs/pipeline/05-model-construction.md`](docs/pipeline/05-model-construction.md) |
+| 6 | Training | **Complete** — all 6 (architecture, task) runs trained on Runpod, 2026-08-17 | [`docs/pipeline/06-training.md`](docs/pipeline/06-training.md) |
+| 7 | Evaluation | **Complete** — all 6 runs evaluated; see `results/*.json` | [`docs/pipeline/07-evaluation.md`](docs/pipeline/07-evaluation.md) |
+| 8 | XAI generation | Partially implemented (Grad-CAM faithfulness ran as part of Stage 7; SHAP module exists but no saved-overlay step yet) | [`docs/pipeline/08-xai-generation.md`](docs/pipeline/08-xai-generation.md) |
+| 9 | Trade-off analysis | **Complete** — see `results/trade_off_summary.json` | [`docs/pipeline/09-trade-off-analysis.md`](docs/pipeline/09-trade-off-analysis.md) |
 | 10 | Streamlit app | Planned — not yet built | [`docs/pipeline/10-streamlit-app.md`](docs/pipeline/10-streamlit-app.md) |
+
+**First full run results (2026-08-17):** `resnet50` leads on both seven-class accuracy
+(0.658) and Grad-CAM faithfulness (mean IoU 0.253) among the three architectures.
+Full per-architecture metrics and confusion matrices are in `results/` and the training
+dashboard artifact (see journal, 2026-08-17 entries) — none of these numbers should be
+treated as final without a supervisor review of the run (single seed, default
+hyperparameters, no tuning pass yet).
 
 ## Repository layout
 

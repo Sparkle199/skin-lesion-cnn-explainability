@@ -8,6 +8,8 @@ paths); intended to run on Kaggle GPU infrastructure per the proposal, not local
 """
 
 import argparse
+import json
+from pathlib import Path
 
 import tensorflow as tf
 
@@ -16,6 +18,7 @@ from src.data import binary_corpus, ddi, ham10000
 from src.data.augmentation import compute_class_weights
 from src.data.oversampling import compute_steps_per_epoch
 from src.data.pipeline import make_dataset, make_oversampled_binary_dataset
+from src.json_utils import numpy_json_default
 from src.models.build import build_model, unfreeze_top_layers
 
 TASKS = {
@@ -87,7 +90,7 @@ def train(
     loss = "binary_crossentropy" if len(classes) == 2 else "categorical_crossentropy"
 
     model.compile(optimizer=tf.keras.optimizers.Adam(1e-3), loss=loss, metrics=["accuracy"])
-    model.fit(
+    history_frozen = model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=epochs_frozen,
@@ -97,13 +100,23 @@ def train(
 
     unfreeze_top_layers(base, unfreeze_layers)
     model.compile(optimizer=tf.keras.optimizers.Adam(1e-5), loss=loss, metrics=["accuracy"])
-    history = model.fit(
+    history_finetune = model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=epochs_finetune,
         steps_per_epoch=steps_per_epoch,
         class_weight=class_weight,
     )
+
+    # Both phases' per-epoch metrics, concatenated with a "phase" marker per epoch --
+    # history_frozen's own History object was previously discarded entirely (its fit()
+    # return value was never captured), so only the fine-tune phase's 10 epochs were
+    # ever visible to callers, even though both phases print to stdout. Fixed here so
+    # main() can save the full 15-epoch (5 frozen + 10 fine-tune) curve to disk, rather
+    # than that data only existing as unstructured training-log text.
+    history = {"phase": ["frozen"] * epochs_frozen + ["finetune"] * epochs_finetune}
+    for key in history_finetune.history:
+        history[key] = history_frozen.history[key] + history_finetune.history[key]
 
     return model, history
 
@@ -124,7 +137,7 @@ def main():
     )
     args = parser.parse_args()
 
-    model, _ = train(
+    model, history = train(
         args.architecture,
         args.task,
         args.epochs_frozen,
@@ -136,6 +149,12 @@ def main():
     out_path = f"models/{args.architecture}_{args.task}.keras"
     model.save(out_path)
     print(f"Saved trained model to {out_path}")
+
+    history_path = Path(f"results/history_{args.architecture}_{args.task}.json")
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(history_path, "w") as f:
+        json.dump(history, f, indent=2, default=numpy_json_default)
+    print(f"Saved training history to {history_path}")
 
 
 if __name__ == "__main__":
