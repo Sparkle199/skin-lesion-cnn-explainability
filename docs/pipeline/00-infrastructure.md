@@ -35,7 +35,7 @@ flowchart TD
     B -.->|"if memory-bound"| D["Rejected: A100 / H100 / H200 / B200<br/>VRAM and cost unjustified for this workload"]
     C --> E{"Hourly rate vs.<br/>throughput?"}
     E --> F["RTX A5000 -- $0.27/hr<br/>lower rate, lower throughput"]
-    E --> G["RTX 4090 -- $0.99/hr<br/>higher rate, higher throughput"]
+    E --> G["RTX 4090 -- $0.74/hr<br/>higher rate, higher throughput"]
     G --> H["Selected: lower total $ per run,<br/>finishes faster against fixed deadline"]
 ```
 
@@ -45,7 +45,7 @@ infrastructure"). Confirm with the supervisor that a paid cloud GPU provider is 
 acceptable substitution, and mention the switch explicitly in Chapter 3.
 
 ## Cost estimate
-At $0.99/hr, even a generous 6 hours/run × 6 runs (36 GPU-hrs) ≈ $36, plus time for
+At $0.74/hr, even a generous 6 hours/run × 6 runs (36 GPU-hrs) ≈ $27, plus time for
 Grad-CAM/SHAP generation and any re-runs.
 
 ## Fallback if VRAM pressure occurs
