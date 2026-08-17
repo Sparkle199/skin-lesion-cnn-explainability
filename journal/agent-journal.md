@@ -691,3 +691,53 @@ combined batch) and SHAP against a real trained model are still not runtime-test
 functions would have been, and it means any future fourth architecture only needs
 adding to one list. Worth defaulting to parametrization over copy-paste whenever a test
 is "the same steps, different constant" like this one was.
+
+---
+
+## 2026-08-17 — Binary task's own machinery verified end-to-end
+
+**What happened:** Student asked to verify the binary task's specific code paths,
+which the seven-class smoke test never touched. Added
+`test_binary_task_roundtrip_on_real_data_subset` to
+`tests/test_integration_smoke.py`: builds the real combined HAM10000+DDI corpus via
+`prepare_data("binary")`, trains a sigmoid-head resnet50 through
+`make_oversampled_binary_dataset` (real DDI-fraction-weighted batching, not a
+synthetic stand-in) and `compute_steps_per_epoch`, saves/reloads, predicts, computes
+`stratified_binary_metrics` against real DDI skin-tone-group labels, and runs
+Grad-CAM + faithfulness on a HAM10000-derived row pulled back out of the combined
+corpus. **Passed end-to-end in 131.94s**, real exit code confirmed.
+
+While writing it, caught one thing worth recording precisely because it *would* have
+been a real bug if missed rather than caught while writing the test: `build_binary_corpus`
+concatenates HAM10000 rows before DDI rows, so a naive `.head(n)` on the combined
+corpus would silently return HAM10000-only rows for small `n`, and
+`make_oversampled_binary_dataset` raises `ValueError` if either source is empty. Wrote
+a small `_subset` helper that pulls a slice from each `source` group explicitly instead
+of `.head()`-ing the combined frame -- this was a test-construction issue, not a bug in
+`src/data/binary_corpus.py` itself, but it's the same shape of mistake
+(`build_binary_corpus`'s own docstring already warns about a *related* past bug: an
+earlier version dropped `image_id` for the same "assumed structure without checking"
+reason).
+
+**Where uncertain / stuck:** None -- this closes the binary-task gap explicitly named
+as remaining in both of the previous two entries. What's left unverified project-wide:
+SHAP (`xai/shap_explain.py`) has still never been run against a real trained model,
+only a stub predict function (2026-07-31). Everything else flagged since 2026-07-31 as
+"only syntax-checked" now has real, passing, GPU-executed evidence.
+
+**Assumptions made:** Used small, fixed subset sizes (24/8 train, 12/4 val,
+HAM10000/DDI respectively) -- large enough that `make_oversampled_binary_dataset` and
+`compute_steps_per_epoch` both operate on non-degenerate inputs (`steps_per_epoch`
+comes out to 5, not clamped to the `max(1, ...)` floor), small enough to run in
+~2 minutes. Not chosen to be statistically meaningful, only to exercise the code path
+correctly -- consistent with the smoke-test framing established in the first entry.
+
+**How output was verified:** Real pytest run on the pod, log read directly, explicit
+`EXIT_CODE:0` confirmed -- same discipline as the previous two entries, not the
+piped-command mistake from earlier in the session.
+
+**What was learned / should change next time:** When subsetting a DataFrame built by
+concatenating multiple sources, `.head(n)` is only safe if the caller knows (or checks)
+the concatenation order -- worth defaulting to an explicit per-group slice whenever a
+test needs guaranteed representation from more than one source, rather than assuming
+row order.
