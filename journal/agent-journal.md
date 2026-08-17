@@ -428,3 +428,231 @@ needs TensorFlow just because it sits downstream of TF-dependent ones -- separat
 "reads other steps' output and reports on it" (this module) from "produces that output"
 (evaluate_run.py) kept this piece fully testable where the modules feeding it aren't.
 Worth looking for this separation deliberately in future phases too.
+
+---
+
+## 2026-08-17 — Documentation set added: README, pipeline diagrams, decision log entry
+
+**What happened:** Student asked for a step-by-step methodology from data processing
+through to a new, previously-unplanned Streamlit demo stage, then asked for this to be
+made durable as documentation. Added `README.md` (system overview, one exhaustive
+cross-stage mermaid diagram, a per-stage status table) and
+`docs/pipeline/00-infrastructure.md` through `10-streamlit-app.md` (one file per
+pipeline stage, each documenting purpose/inputs/process/outputs/code references/status
+against the real `src/` modules, not just the proposal text). Later added one
+stage-specific mermaid diagram per doc, zooming into that stage's internal
+branching/logic rather than repeating the README's cross-stage overview.
+
+Stage 10 (Streamlit) and part of Stage 8 (saving SHAP/Grad-CAM overlays to disk, rather
+than only producing them in memory) are documented as **not yet implemented** -- no code
+exists for either. This is new scope beyond the original proposal (Streamlit was never
+in `project_desc.txt`), added specifically to make the interpretability comparison
+(Objective 5) tangible for the dissertation and any demo.
+
+**Where uncertain / stuck:** A `spec/decisions.md` (Chapter-3-ready decision log,
+ADR-style) was drafted for the Runpod GPU choice but the write was rejected/interrupted
+by the student before being saved -- it does not exist in the repo. The GPU decision's
+rationale ended up captured instead in `docs/pipeline/00-infrastructure.md`, so nothing
+was lost, but a first attempt at README referenced the non-existent `spec/decisions.md`
+file and had to be corrected before committing. Worth checking a referenced file
+actually exists before citing it, not just before this specific fix.
+
+**Assumptions made:** That every pipeline stage warranted its own diagram ("where
+necessary" was read as "all 11 stages," since each has genuine internal branching or
+sequencing worth visualising) rather than only a subset -- flagged here since the
+student's phrasing left this open to a narrower reading.
+
+**A factual error and its correction (worth recording since it affects a cost figure
+now in the docs):** Initially recommended and documented the RTX 4090 at $0.99/hr --
+this was actually the RTX 5090's price, mistakenly attributed to the 4090 while reading
+down the pasted Runpod pricing list. Student caught the inconsistency by asking "RTX
+4090 or RTX 5090?". Corrected to the real RTX 4090 rate ($0.74/hr) in
+`docs/pipeline/00-infrastructure.md` (diagram + cost estimate, ~$27 not ~$36 for the
+36-GPU-hr estimate). **Lesson: when transcribing a list of similar priced options,
+re-verify the specific figure against the source list before it propagates into
+multiple documents, rather than trusting the first write-down.**
+
+**What was learned / should change next time:** Documentation that cites specific
+numbers (prices) or specific file paths (spec/decisions.md) needs the same
+verify-before-trusting discipline already applied to dataset facts earlier in this
+project -- both mistakes above were caught by the student, not by self-review, and both
+were avoidable with a direct re-check against the source (the pasted pricing list; the
+actual repo contents) before writing.
+
+---
+
+## 2026-08-17 — Runpod pod provisioned; SSH access established; dataset upload started
+
+**What happened:** Student set up a Runpod pod (RTX 4090) via the web UI (outside this
+session) and asked to connect to it from here. Generated a new local SSH keypair
+(`~/.ssh/id_ed25519`, no passphrase) and provided the public key for the student to
+register with Runpod. First connection attempt failed (`Permission denied
+(publickey,password)`) because the student had not yet actually saved the key on
+Runpod. Rather than wait on the account-settings UI (which may require a pod restart to
+take effect for an already-running pod), used Runpod's browser-based Web Terminal as a
+faster path: gave the student a one-line command to append the public key directly to
+the pod's `~/.ssh/authorized_keys` via the already-open web terminal, with no restart
+needed. Retried and connected successfully; confirmed via `nvidia-smi` that the pod
+does have the ordered RTX 4090 (24564 MiB VRAM), matching `docs/pipeline/00-infrastructure.md`.
+
+Then began Stage 1 (data acquisition) for real: confirmed the pod has a large
+persistent `/workspace` volume (658T available, network-backed), created
+`/workspace/uploads/` and the `/workspace/data/raw/{dataverse_files,ddi}` destination
+directories per `src/config.py`'s expected layout, and started uploading both local
+archives (`archive (1).zip`, 3.2GB; `ddidiversedermatologyimages.zip`, 237MB) via `scp`
+over the same SSH connection, running in the background given the transfer size.
+
+**Where uncertain / stuck:**
+- Upload bandwidth/duration from the student's local connection is unknown -- 3.2GB at
+  home-upload speeds could take anywhere from minutes to over an hour. Not yet resolved
+  as of this entry; extraction into the final `data/raw/...` layout
+  (`docs/pipeline/01-data-acquisition.md`) has not happened yet and depends on this
+  transfer finishing first.
+- Only checked `nvidia-smi` and `/workspace` disk space on the pod so far -- have not
+  yet verified the pod's installed Python/CUDA/TensorFlow versions are compatible with
+  `requirements.txt` (`tensorflow>=2.15`). This should be checked before the first real
+  `python -m src.train` invocation (Stage 6), not assumed.
+
+**Assumptions made:**
+- Assumed `/workspace` is the correct persistent-storage location for the datasets
+  (rather than the pod's ephemeral container root) based on its large network-backed
+  size (658T) relative to the tiny root filesystem implied by the earlier empty
+  `/workspace` listing -- this matches Runpod's documented convention (container disk is
+  ephemeral, `/workspace` is the persistent volume) but was not independently confirmed
+  by reading Runpod's own docs in this session.
+- Assumed `root` as the SSH login user, based on how the pod's home directory (`~`)
+  resolved during key installation -- confirmed correct once the connection succeeded,
+  not assumed indefinitely.
+
+**How output was verified (not just generated):** The SSH connection was verified with
+a real remote command (`hostname`, `nvidia-smi`), not just a successful exit code from
+`ssh-keygen`/`scp`. The upload's progress was checked mid-transfer via a real `ls -la`
+on the pod (`archive (1).zip` partially present, growing), not assumed to be proceeding
+correctly from the backgrounded job's exit status alone.
+
+**What was learned / should change next time:** Registering an SSH key through a cloud
+provider's account-settings UI is not always immediately live for an already-running
+pod -- checking for a faster path (here, the provider's own web terminal) avoided
+asking the student to restart a pod that had probably already been paying/running for a
+while. Worth checking for this kind of already-open side-channel access before assuming
+a UI-driven fix requires a restart.
+
+---
+
+## 2026-08-17 — Stage 1 (data acquisition) completed on the Runpod pod
+
+**What happened:** Continuing directly from the previous entry: the `scp` upload of
+both archives finished (`archive (1).zip` 3.2GB, `ddidiversedermatologyimages.zip`
+237MB, both to `/workspace/uploads/`). Before extracting, ran `unzip -l` on both
+archives to check their internal structure rather than assuming it matched
+`docs/pipeline/01-data-acquisition.md`'s description exactly: confirmed the HAM10000
+archive already nests everything under a top-level `dataverse_files/` folder (so
+extracting with `-d /workspace/data/raw/` lands it correctly), while the DDI archive is
+flat -- 656 PNGs and `ddi_metadata.csv` directly at the zip root, no `ddi/` subfolder
+(so it needed `-d /workspace/data/raw/ddi/` specifically, not the same target as
+HAM10000). Extracted both (21,544 + 657 files), then verified every path and count
+against `src/config.py`'s expectations directly rather than trusting a clean exit
+code: HAM10000 images 10,015/10,015, segmentation masks 10,015/10,015, ISIC2018 test
+images 1,511/1,511, DDI images 656/656, both `HAM10000_metadata` and
+`ddi_metadata.csv` present -- all exact matches to the counts established when these
+archives were first inspected locally on 2026-07-31. Total 3.3GB on disk. Set
+`PROJECT_DATA_DIR=/workspace/data/raw` in the pod's `~/.bashrc` so `src/config.py`'s
+`DATA_ROOT` resolves correctly for any future SSH session on this pod, without needing
+to be re-exported manually each time.
+
+**Where uncertain / stuck:** None -- this was mechanical execution and verification of
+an already-designed data layout (`src/config.py`, `docs/pipeline/01-data-acquisition.md`),
+not new design work. The one thing not yet done: the raw zip archives are still sitting
+in `/workspace/uploads/` (3.4GB, now redundant with the extracted copy) -- left in
+place rather than deleted, since `/workspace` has 658T available and deleting a
+student's uploaded files without being asked is the kind of action this project's own
+governance framework treats as requiring explicit confirmation, not silent cleanup.
+
+**Assumptions made:** None beyond what's already recorded in the previous entry
+(`/workspace` as the persistent-storage location, `root` as the SSH user) -- both held
+up through this stage without issue.
+
+**How output was verified (not just generated):** Every extracted path was checked
+with a real `ls`/count on the pod against the exact numbers `src/config.py` and
+`spec/specification.md` already state (not re-derived here, since they were already
+confirmed once by direct archive inspection on 2026-07-31) -- this is a match-check
+against previously-verified facts, not a first-time verification.
+
+**What was learned / should change next time:** The two archives had genuinely
+different internal layouts (nested vs. flat) despite both being handled by the same
+two-line "just extract them" plan in `docs/pipeline/01-data-acquisition.md` -- worth
+running `unzip -l` (or equivalent) before extracting any archive whose internal
+structure hasn't been directly confirmed, even when a doc already describes the
+expected destination layout, since the doc describes the destination, not necessarily
+the archive's own internal path prefix.
+
+---
+
+## 2026-08-17 — Environment set up on the pod; the biggest verification gap finally closed
+
+**What happened:** Student asked to confirm the existing scripts were actually useful,
+not just plausible-looking. Since GitHub clone failed (repo is private, returns 401
+unauthenticated), copied `src/`, `tests/`, `requirements.txt` to the pod directly via
+`scp` instead of setting up GitHub credentials remotely. Installed `tensorflow[and-cuda]`
+plus the rest of `requirements.txt` into a proper venv (a first attempt using the
+system `pip` failed with Debian's `externally-managed-environment` guard -- caught only
+because the failure was checked directly rather than trusted from a piped command's
+exit code, see below). Confirmed TensorFlow 2.21.0 detects and computes on the RTX 4090
+for real (`tf.config.list_physical_devices`, a live GPU add). Ran the existing 34-test
+suite for real (all pass, unchanged from local runs -- these were already pure-Python/
+pandas tests with no TF dependency).
+
+Then wrote and ran a new test, `tests/test_integration_smoke.py`
+(`test_train_evaluate_explain_roundtrip_on_real_data_subset`), specifically to close the
+gap called out repeatedly since 2026-07-31: every TF-dependent module
+(`models/build.py`, `data/pipeline.py`, `train.py`, `evaluate_run.py`, `xai/gradcam.py`)
+had only ever been syntax-checked, never executed. This test builds a real ResNet-50 via
+`build_model`, trains it for one frozen epoch and one fine-tune epoch on a small real
+HAM10000 subset (32 train / 16 val images) via the real `make_dataset` pipeline, saves
+and reloads it, predicts via `evaluate_run.predict_dataset`, scores via
+`evaluate.evaluate_predictions`, and runs `xai.gradcam.make_gradcam_heatmap` +
+`xai.faithfulness.compute_overlap` against a real ground-truth segmentation mask.
+**Passed end-to-end in 136.81s**, including confirming the specific previously-flagged
+uncertain assumption in `config.BACKBONE_LAYER_NAME` -- `reloaded.get_layer("resnet50")`
+does correctly retrieve the backbone submodel after a real save/reload round-trip.
+
+**Where uncertain / stuck:**
+- The smoke test only exercises the seven-class task with `resnet50`. The binary task's
+  distinct code paths -- `make_oversampled_binary_dataset`, `binary_corpus.
+  build_binary_corpus` feeding into a real DDI+HAM10000 batch, `compute_steps_per_epoch`
+  -- remain runtime-*un*tested against real data, as do `efficientnetb4` and `vgg16`
+  specifically (only `resnet50` was smoke-tested; the other two share the same
+  `build_model`/`unfreeze_top_layers` code path but at different input resolutions and
+  different `BACKBONE_LAYER_NAME`/`LAST_CONV_LAYER` values, which haven't been
+  individually confirmed).
+- SHAP's `explain_images` was not exercised against a real trained model in this smoke
+  test (only against a stub predict function, back on 2026-07-31) -- it's comparatively
+  slow (`max_evals=500` per image) and was left for Stage 8's dedicated script rather
+  than folded into this smoke test.
+
+**Assumptions made:** That a 16-row validation subset was an acceptable smoke-test
+size despite it being small enough to land only one class present in `y_true`/`y_pred`
+(triggering `UndefinedMetricWarning` for ROC-AUC and Cohen's Kappa) -- acceptable here
+since the goal was confirming the *code path* runs without error, not producing
+meaningful metrics from 32 training images. Real runs (10,015 images) won't hit this
+degenerate case.
+
+**How output was verified (not just generated):** This entire entry *is* the
+verification step the project was missing -- real GPU execution, real data, a real
+saved-and-reloaded model, checked assertion-by-assertion (shapes, value ranges, the
+specific backbone-retrieval assumption) rather than inferred from reading the code.
+Additionally caught and fixed a real process bug while getting here: an initial
+`pip install ... | tail -30` in a background command reported exit code 0 even though
+`pip` itself had failed (Debian's PEP 668 guard) -- because piping through `tail`
+silently replaces the reported exit code with `tail`'s, not the failing command's. Only
+caught because the *next* command (checking for TensorFlow) failed honestly, prompting
+a re-check rather than trusting the false-positive success notification.
+
+**What was learned / should change next time:** Two lessons, both about not trusting a
+success signal at face value: (1) never pipe a command whose exit code matters through
+`tail`/`head`/`grep` without either checking `PIPESTATUS`/`pipefail` or writing the exit
+code out explicitly (`cmd; echo EXIT_CODE:$?`), which is what every command after the
+false-positive did; (2) a background task's "completed, exit code 0" notification
+describes the wrapper, not necessarily the real work inside it -- worth reading the
+actual captured output before reporting success to the student, which is now the
+default habit for the rest of this session.
