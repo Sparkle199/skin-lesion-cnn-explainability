@@ -24,14 +24,30 @@ from src.models.build import build_model, unfreeze_top_layers
 TASKS = {
     "seven_class": {"classes": config.SEVEN_CLASSES, "label_col": "dx"},
     "binary": {"classes": ["benign", "malignant"], "label_col": "binary_label"},
+    # HAM10000-only binary pretraining stage, per the revised DDI methodology (see
+    # spec/specification.md and journal, 2026-08-17): train a solid HAM10000 binary
+    # baseline first, then either (a) evaluate it zero-shot on DDI as a pure
+    # generalisation/bias stress test (src/evaluate_ddi.py), or (b) fine-tune it
+    # further on DDI (src/finetune_ddi.py) -- rather than mixing DDI into training
+    # from the first batch, as the original "binary" task above still does. Both
+    # "binary" and "binary_ham_only" are kept: the joint-mixed approach isn't
+    # discarded, it becomes one comparison arm alongside the sequential one.
+    "binary_ham_only": {"classes": ["benign", "malignant"], "label_col": "binary_label"},
 }
+
+# Columns kept when relabelling HAM10000 alone to binary, matching
+# src.data.binary_corpus's own column set so a "binary_ham_only" DataFrame is
+# structurally identical to the HAM10000 half of a joint "binary" corpus (same
+# columns evaluate_run.py and src.evaluate expect: image_path, binary_label, source,
+# skin_tone_group, image_id).
+_HAM_ONLY_BINARY_COLUMNS = ["image_path", "binary_label", "source", "skin_tone_group", "image_id"]
 
 
 def prepare_data(task_name: str):
     """Return (train_df, val_df) for the requested task.
 
-    Both tasks start from the same lesion-level HAM10000 split, so a lesion never
-    appears in one task's training set and the other task's validation set.
+    All tasks start from the same lesion-level HAM10000 split, so a lesion never
+    appears in one task's training set and another task's validation set.
     """
     ham_df = ham10000.load_metadata()
     train_df, val_df = ham10000.lesion_level_split(ham_df)
@@ -44,6 +60,11 @@ def prepare_data(task_name: str):
         ddi_train, ddi_val = ddi.split_ddi(ddi_df)
         train_binary = binary_corpus.build_binary_corpus(train_df, ddi_train)
         val_binary = binary_corpus.build_binary_corpus(val_df, ddi_val)
+        return train_binary, val_binary
+
+    if task_name == "binary_ham_only":
+        train_binary = binary_corpus.relabel_ham10000_binary(train_df)[_HAM_ONLY_BINARY_COLUMNS]
+        val_binary = binary_corpus.relabel_ham10000_binary(val_df)[_HAM_ONLY_BINARY_COLUMNS]
         return train_binary, val_binary
 
     raise ValueError(f"Unknown task '{task_name}', expected one of {list(TASKS)}")

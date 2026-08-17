@@ -155,7 +155,7 @@ table below) whenever that stage's implementation changes.
 | 7 | Evaluation | **Complete** — all 6 runs evaluated; see `results/*.json` | [`docs/pipeline/07-evaluation.md`](docs/pipeline/07-evaluation.md) |
 | 8 | XAI generation | Partially implemented (Grad-CAM faithfulness ran as part of Stage 7; SHAP module exists but no saved-overlay step yet) | [`docs/pipeline/08-xai-generation.md`](docs/pipeline/08-xai-generation.md) |
 | 9 | Trade-off analysis | **Complete** — see `results/trade_off_summary.json` | [`docs/pipeline/09-trade-off-analysis.md`](docs/pipeline/09-trade-off-analysis.md) |
-| 10 | Streamlit app | Planned — not yet built | [`docs/pipeline/10-streamlit-app.md`](docs/pipeline/10-streamlit-app.md) |
+| 10 | Streamlit app | **Built** — `streamlit_app.py` + `pages/`, run via `streamlit run streamlit_app.py` from the repo root (needs `models/*.keras` present locally) | [`docs/pipeline/10-streamlit-app.md`](docs/pipeline/10-streamlit-app.md) |
 
 **First full run results (2026-08-17):** `resnet50` leads on both seven-class accuracy
 (0.658) and Grad-CAM faithfulness (mean IoU 0.253) among the three architectures.
@@ -163,6 +163,15 @@ Full per-architecture metrics and confusion matrices are in `results/` and the t
 dashboard artifact (see journal, 2026-08-17 entries) — none of these numbers should be
 treated as final without a supervisor review of the run (single seed, default
 hyperparameters, no tuning pass yet).
+
+**DDI methodology pilot (resnet50 only, 2026-08-17):** the binary task now has three
+comparison approaches — joint/mixed (original), zero-shot DDI generalisation stress
+test, and sequential DDI fine-tuning (`src/finetune_ddi.py`, `src/evaluate_ddi.py`).
+Headline finding: a HAM10000-only binary model's malignant recall collapses from 0.799
+(HAM10000) to 0.158 on DDI zero-shot, worst on the darkest skin-tone group; fine-tuning
+on DDI partially recovers recall (0.269) at a real cost to HAM10000 retention (accuracy
+0.815 → 0.754). Not yet extended to efficientnetb4/vgg16 — see `spec/specification.md`
+and journal for full detail.
 
 ## Repository layout
 

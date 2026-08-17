@@ -20,12 +20,28 @@ classification performance and interpretability (Grad-CAM, SHAP) for each.
   at the lesion level to avoid leakage from lesions photographed more than once, and
   evaluating additionally on the official ISIC2018 Task 3 held-out test set (1,511
   images, lesion-disjoint from HAM10000's training set).
-- **Secondary task (binary malignant/benign):** train and evaluate each architecture on a
-  combined corpus of HAM10000 (relabelled to malignant/benign from its existing seven-class
-  diagnosis: malignant = {akiec, bcc, mel}, benign = {bkl, df, nv, vasc}) and the full DDI
-  dataset (656 images, each already carrying a native malignant/benign label), used in
-  full rather than mapped into the seven-class taxonomy — DDI's 78 specific diagnoses do
-  not map cleanly onto HAM10000's 7 classes.
+- **Secondary task (binary malignant/benign):** HAM10000 relabelled to malignant/benign
+  from its existing seven-class diagnosis (malignant = {akiec, bcc, mel}, benign = {bkl,
+  df, nv, vasc}) combined with DDI (656 images, each already carrying a native
+  malignant/benign label, used in full rather than mapped into the seven-class taxonomy
+  — DDI's 78 specific diagnoses do not map cleanly onto HAM10000's 7 classes). Revised
+  2026-08-17 (student-proposed, standard transfer-learning practice) into three
+  comparison approaches for how DDI is incorporated, rather than one:
+  1. **Joint/mixed** (original design, kept as a comparison arm, not superseded): DDI
+     mixed into training from the first batch via oversampled batching (see Imbalance
+     handling below).
+  2. **Zero-shot generalisation stress test:** train a HAM10000-only binary baseline
+     (task `binary_ham_only`), then evaluate it on DDI's full 656 images *without any
+     DDI training at all* — this alone is diagnostic of how well the model generalises
+     across imaging modality and skin tone, and is not something the joint-mixed
+     approach can measure directly (its model never exists without DDI in its training
+     data).
+  3. **Sequential fine-tuning:** take the same HAM10000-only baseline and fine-tune it
+     further on DDI's own train split only, at a low learning rate, rather than mixing
+     both sources from scratch — evaluated on DDI's held-out validation split plus a
+     HAM10000 retention check (has adapting to DDI cost baseline performance?).
+  Piloted for resnet50 only as of 2026-08-17 (see journal); extending to
+  efficientnetb4/vgg16 is not yet done.
 - Apply data augmentation (rotation, flipping, zoom, brightness) and class weighting to
   address class imbalance in HAM10000 (~67% of images in one class, confirmed: nv 6,705 /
   mel 1,113 / bkl 1,099 / bcc 514 / akiec 327 / vasc 142 / df 115) and the further
@@ -53,6 +69,17 @@ after the original proposal specifically to reduce the skin-tone homogeneity of 
 (sourced predominantly from fair-skinned patients in Europe/Australia) and to make the
 resulting bias measurable, via the binary task, rather than only acknowledged. The
 project remains explicitly non-clinical — no diagnostic tool is being produced.
+
+The 2026-08-17 revision to three DDI-incorporation approaches exists because the
+original joint-mixed design could never answer "how biased is a model that has never
+seen DDI at all?" — a jointly-trained model has no HAM10000-only counterpart to compare
+against. The resnet50 pilot's zero-shot result (malignant recall 0.799 on HAM10000's own
+validation split, collapsing to 0.158 on DDI) makes the Social Issues section's
+generalisation concern a measured finding rather than a qualitative one, and the
+subsequent fine-tuning result (partial recovery to 0.269, at a real cost to HAM10000
+retention) demonstrates that incorporating a small, diverse dataset after the fact is a
+genuine trade-off, not a free fix — directly relevant to the "residual demographic bias"
+risk already logged below.
 
 ## CONSTRAINTS
 - Datasets: HAM10000 and DDI only, each used strictly under its own licence.
@@ -91,7 +118,15 @@ project remains explicitly non-clinical — no diagnostic tool is being produced
 - **Residual demographic bias**: DDI reduces but does not eliminate HAM10000's skin-tone
   skew in the binary task, since DDI is much smaller; the seven-class task is unaffected
   by DDI and retains HAM10000's original skin-tone skew entirely. This must be reported
-  explicitly, not presented as solved.
+  explicitly, not presented as solved. Confirmed directly, not just anticipated, by the
+  2026-08-17 resnet50 zero-shot pilot: HAM10000-only malignant recall 0.799 collapses to
+  0.158 on DDI, worst on the darkest skin-tone group (FST_V_VI, recall 0.104).
+- **Catastrophic forgetting**: fine-tuning a HAM10000-pretrained model on DDI alone
+  (sequential approach) risks trading HAM10000 performance for DDI adaptation rather than
+  improving both. Confirmed as a real, not just theoretical, trade-off by the same pilot:
+  5 epochs of DDI fine-tuning improved DDI malignant recall (0.158→0.269) but cost 6
+  points of HAM10000 accuracy (0.815→0.754) and did not improve DDI's own ROC-AUC
+  (0.654→0.584). Must be reported as a trade-off, not a straightforward improvement.
 - **Misclassification risk**: false negatives in malignant-vs-benign classification are
   the most consequential error type, even in a non-clinical experimental setting.
 - **Licensing/attribution risk**: incorrect or missing attribution for HAM10000, DDI, or

@@ -925,3 +925,126 @@ is fragile (depends on Keras's exact progress-bar text format) and wastes the fi
 Worth fixing in `src/train.py` before the next full training pass (e.g. hyperparameter
 tuning or a second seed), not treating this grep-based reconstruction as the permanent
 approach.
+
+---
+
+## 2026-08-17 — DDI methodology revised: sequential pretrain-then-finetune, plus a
+## zero-shot generalisation stress test (resnet50 pilot)
+
+**What happened:** Student proposed a significant methodology change for the binary
+task, informed by standard transfer-learning practice: (1) treat HAM10000-only as the
+real baseline to get right first (not just move past it once *an* accuracy number
+exists), (2) use DDI as a **zero-shot generalisation/bias stress test** -- run a
+HAM10000-only model on DDI without any DDI training at all, since that alone is
+diagnostic -- and (3) if DDI is incorporated into training, do it as a **fine-tuning
+stage after HAM10000 pretraining**, on the matched binary label space, rather than
+mixing HAM10000 and DDI together from the first training batch (the original "binary"
+task's design, via `make_oversampled_binary_dataset`, still kept as a first comparison
+arm rather than discarded -- confirmed with the student before implementing, along with
+scoping the pilot to resnet50 only rather than all three architectures, to sanity-check
+results before committing more GPU hours).
+
+Implemented:
+- `src/train.py`: new `"binary_ham_only"` task (HAM10000 relabelled to binary, DDI
+  never touched) alongside the existing `"seven_class"` and `"binary"` (joint-mixed)
+  tasks. Column-set matched to the joint binary corpus's HAM10000 half so both share
+  the same downstream `make_dataset()`/`evaluate_run.py` code paths without special-
+  casing. Also fixed a real bug caught while extending this file: the frozen-phase
+  training `History` object was previously discarded entirely (its `fit()` return
+  value was never captured) -- `train()` now concatenates both phases' histories with a
+  `"phase"` marker per epoch, and `main()` saves the full combined history to
+  `results/history_{architecture}_{task}.json` (was previously never saved at all,
+  see the immediately preceding entry for how that gap was first discovered).
+- `src/finetune_ddi.py` (new): loads an already-trained `binary_ham_only` model and
+  continues training on DDI's own train split only (`ddi.split_ddi`'s train half) at a
+  deliberately low learning rate (`1e-6`, well below either of `src.train`'s two
+  phases), reasoning that this model has already converged on a related-but-distinct
+  distribution and DDI is small (~557 training images) -- a higher rate risks
+  catastrophic forgetting rather than gentle adaptation.
+- `src/evaluate_ddi.py` (new): two modes. `zero_shot` evaluates a `binary_ham_only`
+  model on DDI's **full** 656 images (none of it was used in training this model, so
+  none needs holding back) plus the model's own HAM10000 validation split, in one
+  result file for direct in-distribution vs. out-of-distribution comparison.
+  `finetuned` evaluates the fine-tuned model on DDI's held-out validation split (the
+  half `finetune_ddi.py` excluded from its own training) plus a HAM10000 retention
+  check. Neither computes Grad-CAM faithfulness -- DDI has no ground-truth mask, per
+  the existing constraint.
+- `tests/test_train.py` (new file -- no prior tests existed for `src/train.py`,
+  previously only exercised indirectly via `tests/test_integration_smoke.py`): 5 tests
+  covering `prepare_data` for all three tasks, including one specifically asserting
+  `binary_ham_only` never calls `ddi.load_metadata()` at all -- a real leakage risk if
+  it did, since the whole point of the zero-shot stress test is that DDI is genuinely
+  untouched until fine-tuning.
+
+**Pilot results (resnet50, real training + evaluation on the pod, not projected):**
+
+| Approach | DDI accuracy | DDI kappa | DDI ROC-AUC | DDI malignant recall | HAM10000 accuracy |
+|---|---|---|---|---|---|
+| Joint/mixed (original `binary` task) | -- (DDI mixed into training, never held out) | -- | -- | -- | 0.817 |
+| Zero-shot (`binary_ham_only`, DDI unseen) | 0.753 | 0.159 | 0.654 | 0.158 | 0.815 |
+| Sequential fine-tune (5 epochs on DDI) | 0.717 | 0.167 | 0.584 | 0.269 | 0.754 (retention) |
+
+The zero-shot result is the headline finding: a HAM10000-only binary model that looks
+strong internally (accuracy 0.815, malignant recall 0.799, ROC-AUC 0.900) collapses to
+malignant recall 0.158 and ROC-AUC 0.654 on DDI -- a stark, *measured* demonstration of
+the generalisation/bias gap the Social Issues section of the proposal already
+anticipated qualitatively, now backed by a number. Skin-tone breakdown (zero-shot):
+malignant recall FST_V_VI (darkest) 0.104, FST_I_II 0.163, FST_III_IV 0.189 -- worst on
+the darkest-skin group, consistent with the anticipated bias direction, though each
+group is only ~207-241 DDI images so this should be described as suggestive, not
+conclusive, without a significance check.
+
+Fine-tuning genuinely improved malignant recall (0.158 -> 0.269) but at a real cost:
+HAM10000 accuracy dropped 6 points (0.815 -> 0.754) and DDI's own ROC-AUC *worsened*
+(0.654 -> 0.584) -- 5 epochs at this learning rate seems to have shifted the decision
+boundary toward catching more malignant cases without improving overall discrimination,
+alongside a genuine forgetting trade-off. The darkest-skin-tone group remained worst
+after fine-tuning too, but the fine-tuned DDI validation split is only ~30-36 images per
+skin-tone group -- too small to treat this as more than a suggestive pattern.
+
+**Where uncertain / stuck:**
+- Only 5 fine-tuning epochs at `1e-6` were tried -- whether more epochs, a different
+  learning rate, or partial re-freezing would trade off the HAM10000-retention loss
+  against DDI improvement differently is unexplored. This pilot answers "does the
+  sequential approach work at all," not "what's the best fine-tuning configuration."
+- The joint/mixed approach's own DDI-specific performance was never measured directly
+  (it was trained *on* DDI, mixed with HAM10000, so there's no clean "zero-shot on
+  DDI" number for it to compare against these two new approaches on equal footing --
+  only its overall binary accuracy/skin-tone-spread, already in `results/resnet50_binary.json`).
+  A fully equal three-way comparison would need the joint model evaluated on DDI's
+  *validation* split specifically (which it never trained on, since `ddi.split_ddi`
+  keeps a val split even for the joint corpus) -- not done in this pilot, worth adding
+  if this comparison is written up formally.
+- Per the student's explicit scoping decision, this is a resnet50-only pilot --
+  efficientnetb4 and vgg16 have not been run through this methodology at all yet.
+
+**Assumptions made:** That DDI's `split_ddi` (stratified by skin-tone-group +
+malignancy, seed=`config.RANDOM_SEED`) called identically in both `finetune_ddi.py` and
+`evaluate_ddi.py`'s `finetuned` mode produces the *same* split both times -- true by
+construction (same function, same default seed, same input DataFrame), verified by
+reading both call sites rather than assumed, since a seed mismatch here would silently
+leak fine-tuning data into the "held-out" evaluation.
+
+**How output was verified:** All new `prepare_data` logic was tested locally first
+(pure pandas, no TensorFlow) using the existing `tests/test_ddi.py` CSV-fixture
+pattern -- an earlier draft of these tests wrongly stubbed `ddi.load_metadata()`
+directly, which skipped its real decoding logic and caused two tests to fail on a
+genuine `KeyError: 'skin_tone_group'`; fixed by switching to the established
+write-CSV-and-monkeypatch-the-path pattern instead. All 5 new tests plus the full
+44-test suite were then run for real on the pod (not locally -- the student explicitly
+corrected this mid-session: local execution was for the Streamlit demo specifically,
+not this training/evaluation work) before any training was started. The
+`binary_ham_only` training run, zero-shot evaluation, fine-tuning run, and fine-tuned
+evaluation were all executed for real on the pod and their result files read directly,
+not projected.
+
+**What was learned / should change next time:** The student's proposed methodology is a
+materially stronger research design than the original joint-mixed-only approach --
+worth remembering for future dataset-combination decisions on this project (and
+elsewhere): sequencing "get a solid single-source baseline, measure zero-shot transfer,
+*then* decide how to adapt" surfaces information (the stark zero-shot collapse) that
+joint training from scratch would have hidden entirely, since a jointly-trained model
+never produces a "how does the HAM10000-only version generalise" number at all. Also
+re-confirmed the local-vs-pod execution boundary explicitly established earlier in this
+session: local `.venv` is for the Streamlit demo only; all training, evaluation, and
+test execution belongs on the pod.
