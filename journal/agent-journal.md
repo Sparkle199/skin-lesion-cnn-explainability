@@ -1048,3 +1048,84 @@ never produces a "how does the HAM10000-only version generalise" number at all. 
 re-confirmed the local-vs-pod execution boundary explicitly established earlier in this
 session: local `.venv` is for the Streamlit demo only; all training, evaluation, and
 test execution belongs on the pod.
+
+---
+
+## 2026-08-18 — Pod restarted on a new instance; DDI pilot extended to all three architectures
+
+**What happened:** Session resumed after a multi-day pause (student had stopped the
+Runpod pod to avoid idle billing, per the cost flag raised before pausing). New pod
+instance (new public IP/port, new hostname) but the **same `RUNPOD_VOLUME_ID`** as
+before -- `/workspace` (code, venv, all 8 previously-trained models, all results, the
+full extracted HAM10000+DDI data) survived completely intact on the persistent volume.
+Only `/etc/environment`'s `PROJECT_DATA_DIR` needed re-adding, since that file lives on
+the ephemeral pod instance, not the persistent volume -- confirmed this distinction
+explicitly this time rather than re-discovering it by trial and error as happened with
+the first pod.
+
+Re-connected using the same local SSH keypair (still valid, DDI methodology code
+already present on the volume from before) and extended the resnet50-only DDI pilot to
+`efficientnetb4` and `vgg16` via a new `scripts/run_ddi_pilot.sh` (train
+`binary_ham_only` -> zero-shot DDI eval -> fine-tune on DDI -> fine-tuned eval,
+sequential per architecture, matching the individual commands already run by hand for
+resnet50). All 8 steps (4 per architecture) succeeded for real on the pod.
+
+**Results, extending the table from the previous entry:**
+
+| Architecture | HAM-only malignant recall | DDI zero-shot recall | DDI zero-shot ROC-AUC | Fine-tuned DDI recall | HAM retention accuracy |
+|---|---|---|---|---|---|
+| resnet50 | 0.799 | 0.158 | 0.654 | 0.269 (+0.111) | 0.754 (-0.061) |
+| efficientnetb4 | 0.871 | 0.480 | 0.592 | 0.269 (-0.211) | 0.775 (+0.031) |
+| vgg16 | 0.799 | 0.123 | 0.598 | 0.154 (+0.031) | 0.800 (-0.030) |
+
+Two findings beyond what the resnet50-only pilot could show:
+1. **The zero-shot generalisation collapse is now a cross-architecture finding, not a
+   resnet50-specific result** -- every architecture's malignant recall drops sharply
+   from its own HAM10000 validation performance to DDI. efficientnetb4's zero-shot
+   skin-tone breakdown is the cleanest confirmation yet of the anticipated bias
+   direction: recall declines *monotonically* from lightest to darkest skin (FST I-II
+   0.714 -> III-IV 0.446 -> V-VI 0.292), rather than just being lowest for the darkest
+   group among otherwise-noisy numbers (as resnet50's and vgg16's zero-shot results
+   were).
+2. **Fine-tuning is not a uniformly safe default** -- resnet50 and vgg16 both improved
+   DDI malignant recall after fine-tuning; efficientnetb4's *dropped* (0.480 -> 0.269),
+   even though its HAM10000 retention accuracy improved slightly (unlike the other two,
+   which both lost some retention accuracy). efficientnetb4 was already the best
+   zero-shot generaliser of the three, and the sequential fine-tuning approach partially
+   undid that advantage rather than building on it. This is a genuine negative result,
+   reported as such rather than smoothed into "fine-tuning helps."
+
+**Where uncertain / stuck:**
+- The fine-tuned skin-tone-stratified breakdown remains noisy across all three
+  architectures (~30-36 DDI validation images per skin-tone group after the held-out
+  split) -- efficientnetb4's fine-tuned pattern even reverses direction (FST_V_VI
+  recall 0.429, higher than FST_I_II's 0.250), which reads as sampling noise from a
+  small split rather than a real effect, and should not be reported as a finding on its
+  own without a larger validation set or repeated runs.
+- Why efficientnetb4 responds differently to fine-tuning than the other two
+  architectures (a real regression rather than an improvement) is not investigated
+  further here -- a plausible hypothesis is that efficientnetb4's zero-shot behaviour
+  was already closer to a local optimum for DDI's distribution specifically, and 5
+  epochs at `1e-6` shifted it away from that rather than toward it, but this is
+  speculation, not something the pilot's data confirms on its own.
+- Same single-seed, single-configuration caveat as the resnet50-only pilot: this
+  answers "does the pattern hold across architectures," not "what is the best
+  fine-tuning configuration per architecture."
+
+**Assumptions made:** None beyond what the resnet50-only pilot already assumed
+(`ddi.split_ddi`'s seed consistency between `finetune_ddi.py` and `evaluate_ddi.py`).
+
+**How output was verified:** All 8 steps' real exit codes were checked from the actual
+log content (`grep`-extracted `*_EXIT[...]` lines), not inferred from the background
+wrapper's status -- consistent with the verification discipline established earlier in
+this session. Result JSONs were pulled from the pod and read directly for every number
+quoted above, not projected from the resnet50-only pattern.
+
+**What was learned / should change next time:** Extending a single-architecture pilot
+to the full set can genuinely change the conclusion, not just add confirming data
+points -- efficientnetb4's fine-tuning regression would have been missed entirely if
+the resnet50 pilot's finding ("fine-tuning helps, at a retention cost") had been
+generalised to all three architectures without actually running them. Worth treating
+any single-architecture pilot result as provisional specifically on "does this apply to
+the other architectures too," not just on hyperparameter choices, before writing it up
+as a general conclusion.

@@ -164,14 +164,18 @@ dashboard artifact (see journal, 2026-08-17 entries) — none of these numbers s
 treated as final without a supervisor review of the run (single seed, default
 hyperparameters, no tuning pass yet).
 
-**DDI methodology pilot (resnet50 only, 2026-08-17):** the binary task now has three
-comparison approaches — joint/mixed (original), zero-shot DDI generalisation stress
-test, and sequential DDI fine-tuning (`src/finetune_ddi.py`, `src/evaluate_ddi.py`).
-Headline finding: a HAM10000-only binary model's malignant recall collapses from 0.799
-(HAM10000) to 0.158 on DDI zero-shot, worst on the darkest skin-tone group; fine-tuning
-on DDI partially recovers recall (0.269) at a real cost to HAM10000 retention (accuracy
-0.815 → 0.754). Not yet extended to efficientnetb4/vgg16 — see `spec/specification.md`
-and journal for full detail.
+**DDI methodology pilot, all three architectures (2026-08-17 to 2026-08-18):** the
+binary task now has three comparison approaches — joint/mixed (original), zero-shot DDI
+generalisation stress test, and sequential DDI fine-tuning (`src/finetune_ddi.py`,
+`src/evaluate_ddi.py`). Headline finding: every architecture's malignant recall
+collapses from its own HAM10000 validation performance (0.799–0.871) to 0.123–0.480 on
+DDI zero-shot — a robust, cross-architecture confirmation of the anticipated
+generalisation/bias gap (efficientnetb4's zero-shot skin-tone breakdown declines
+monotonically from lightest to darkest skin). Fine-tuning on DDI is **not** uniformly
+beneficial: it improved DDI recall for resnet50 (→0.269) and vgg16 (→0.154) at a
+retention cost, but *reduced* efficientnetb4's DDI recall (0.480→0.269) despite
+efficientnetb4 being the best zero-shot generaliser of the three — see
+`spec/specification.md` and journal (2026-08-18 entry) for full detail.
 
 ## Repository layout
 

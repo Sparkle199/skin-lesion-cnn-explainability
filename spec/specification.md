@@ -40,8 +40,12 @@ classification performance and interpretability (Grad-CAM, SHAP) for each.
      further on DDI's own train split only, at a low learning rate, rather than mixing
      both sources from scratch — evaluated on DDI's held-out validation split plus a
      HAM10000 retention check (has adapting to DDI cost baseline performance?).
-  Piloted for resnet50 only as of 2026-08-17 (see journal); extending to
-  efficientnetb4/vgg16 is not yet done.
+  Piloted for resnet50 (2026-08-17), then extended to all three architectures
+  (2026-08-18, see journal): the zero-shot generalisation collapse holds across all
+  three, but sequential fine-tuning is **not** uniformly beneficial — it improved DDI
+  recall for resnet50/vgg16 but *reduced* it for efficientnetb4, which was already the
+  best zero-shot generaliser of the three. This must be reported as an
+  architecture-dependent trade-off, not a general recommendation to always fine-tune.
 - Apply data augmentation (rotation, flipping, zoom, brightness) and class weighting to
   address class imbalance in HAM10000 (~67% of images in one class, confirmed: nv 6,705 /
   mel 1,113 / bkl 1,099 / bcc 514 / akiec 327 / vasc 142 / df 115) and the further
@@ -73,13 +77,15 @@ project remains explicitly non-clinical — no diagnostic tool is being produced
 The 2026-08-17 revision to three DDI-incorporation approaches exists because the
 original joint-mixed design could never answer "how biased is a model that has never
 seen DDI at all?" — a jointly-trained model has no HAM10000-only counterpart to compare
-against. The resnet50 pilot's zero-shot result (malignant recall 0.799 on HAM10000's own
-validation split, collapsing to 0.158 on DDI) makes the Social Issues section's
-generalisation concern a measured finding rather than a qualitative one, and the
-subsequent fine-tuning result (partial recovery to 0.269, at a real cost to HAM10000
-retention) demonstrates that incorporating a small, diverse dataset after the fact is a
-genuine trade-off, not a free fix — directly relevant to the "residual demographic bias"
-risk already logged below.
+against. The zero-shot result — malignant recall collapsing from each architecture's own
+HAM10000 validation performance (0.799–0.871) to 0.123–0.480 on DDI, confirmed across
+all three architectures (2026-08-18) — makes the Social Issues section's generalisation
+concern a measured finding rather than a qualitative one. The fine-tuning result is more
+nuanced than "partial recovery at a retention cost": it improved DDI recall for
+resnet50/vgg16 but reduced it for efficientnetb4 (the best zero-shot generaliser of the
+three), demonstrating that incorporating a small, diverse dataset after the fact is a
+genuine, architecture-dependent trade-off, not a free fix and not a uniform one —
+directly relevant to the "residual demographic bias" risk already logged below.
 
 ## CONSTRAINTS
 - Datasets: HAM10000 and DDI only, each used strictly under its own licence.
@@ -121,12 +127,16 @@ risk already logged below.
   explicitly, not presented as solved. Confirmed directly, not just anticipated, by the
   2026-08-17 resnet50 zero-shot pilot: HAM10000-only malignant recall 0.799 collapses to
   0.158 on DDI, worst on the darkest skin-tone group (FST_V_VI, recall 0.104).
-- **Catastrophic forgetting**: fine-tuning a HAM10000-pretrained model on DDI alone
-  (sequential approach) risks trading HAM10000 performance for DDI adaptation rather than
-  improving both. Confirmed as a real, not just theoretical, trade-off by the same pilot:
-  5 epochs of DDI fine-tuning improved DDI malignant recall (0.158→0.269) but cost 6
-  points of HAM10000 accuracy (0.815→0.754) and did not improve DDI's own ROC-AUC
-  (0.654→0.584). Must be reported as a trade-off, not a straightforward improvement.
+- **Catastrophic forgetting / architecture-dependent fine-tuning outcome**: fine-tuning
+  a HAM10000-pretrained model on DDI alone (sequential approach) risks trading HAM10000
+  performance for DDI adaptation rather than improving both — and the two are not
+  linked the same way across architectures. Confirmed across all three architectures
+  (2026-08-18 pilot): resnet50 (DDI recall 0.158→0.269, HAM accuracy 0.815→0.754) and
+  vgg16 (DDI recall 0.123→0.154, HAM accuracy 0.830→0.800) both traded HAM accuracy for
+  DDI recall as expected; efficientnetb4 instead *lost* DDI recall after fine-tuning
+  (0.480→0.269) while its HAM accuracy slightly improved (0.744→0.775) — the opposite
+  trade-off. Must be reported per-architecture, not as one general "fine-tuning helps
+  DDI at a HAM10000 cost" statement.
 - **Misclassification risk**: false negatives in malignant-vs-benign classification are
   the most consequential error type, even in a non-clinical experimental setting.
 - **Licensing/attribution risk**: incorrect or missing attribution for HAM10000, DDI, or
