@@ -1129,3 +1129,80 @@ generalised to all three architectures without actually running them. Worth trea
 any single-architecture pilot result as provisional specifically on "does this apply to
 the other architectures too," not just on hyperparameter choices, before writing it up
 as a general conclusion.
+
+---
+
+## 2026-08-18 — Why efficientnetb4 behaves differently: a calibration-shift explanation
+
+**What happened:** Student asked to investigate why efficientnetb4's DDI malignant
+recall *dropped* after fine-tuning (0.480 -> 0.269) while resnet50's and vgg16's both
+*improved* -- the anomaly flagged in the previous entry. Investigated using only the
+result JSONs already pulled from the pod (no new training or pod access needed): for
+each architecture, computed each model's overall "predicted malignant" rate on DDI
+(from the existing confusion matrices: `(FP + TP) / total`) in both the zero-shot and
+fine-tuned states, since recall alone conflates *how discriminative* a model is with
+*how trigger-happy* it is.
+
+**Finding:** every architecture's predict-malignant rate moved toward DDI's true
+malignant base rate (171/656 = 26.1%) after fine-tuning -- but the three started on
+opposite sides of it:
+
+| Architecture | P(predict malignant) zero-shot | P(predict malignant) fine-tuned | Direction |
+|---|---|---|---|
+| resnet50 | 6.9% | 16.2% | up, toward 26% |
+| vgg16 | 7.2% | 11.1% | up, toward 26% |
+| efficientnetb4 | 36.4% | 21.2% | down, toward 26% |
+
+resnet50 and vgg16 were both *under*-predicting malignant zero-shot (calling it only
+~7% of the time against a true 26% rate) -- fine-tuning corrected this upward, which
+mechanically raises recall. efficientnetb4 was doing the opposite: *over*-predicting
+malignant zero-shot at 36.4%, nearly 1.4x the true rate. This is also consistent with a
+detail already in the previous entry's table that wasn't fully explained there:
+efficientnetb4 had the *highest* zero-shot recall (0.480) of the three architectures
+but the *lowest* zero-shot kappa (0.410, vs. resnet50's 0.505 and vgg16's 0.532) --
+exactly the signature of recall inflated by a low decision threshold rather than by
+genuinely better discrimination. Fine-tuning corrected efficientnetb4's rate back down
+toward the true base rate too, which necessarily lowers its recall even though the
+model is arguably becoming *better* calibrated, not worse.
+
+**Revised interpretation (corrects the previous entry's framing, not just adds to
+it):** "efficientnetb4 responds badly to DDI fine-tuning" is technically true but
+misleading on its own. The more accurate statement: fine-tuning nudges every
+architecture's decision threshold toward DDI's true class balance regardless of which
+direction that correction runs, and efficientnetb4 happened to be over-shooting rather
+than under-shooting beforehand. This reframes the "architecture-dependent trade-off"
+finding from the previous entry -- it's not that fine-tuning is unpredictable
+per-architecture in some deep way, it's that each architecture's *starting*
+calibration on DDI (itself likely shaped by domain shift interacting differently with
+each architecture's frozen BatchNorm statistics, still calibrated to HAM10000, not
+DDI -- unfreeze_top_layers keeps BatchNorm frozen even within the unfrozen layer range,
+so DDI fine-tuning cannot adapt those statistics at all) determines which direction the
+correction goes, and therefore whether recall goes up or down.
+
+**Where uncertain / stuck:** Why efficientnetb4's zero-shot calibration on DDI is so
+much more skewed toward over-predicting malignant than resnet50's or vgg16's is not
+established here -- a plausible contributing factor (frozen BatchNorm statistics
+calibrated to HAM10000's distribution meeting DDI's different imaging modality/skin-tone
+distribution at inference time, with efficientnetb4's higher native input resolution
+[380x380 vs. 224x224] potentially making this domain-shift interaction stronger) is
+noted as a hypothesis, not confirmed -- would need either inspecting per-layer
+activation statistics on DDI vs. HAM10000 inputs, or an ablation unfreezing BatchNorm
+during fine-tuning, neither of which was done here.
+
+**Assumptions made:** That `(FP + TP) / total` from each architecture's existing 2x2
+confusion matrix is a valid proxy for "how often does this model predict malignant" --
+true by definition of a binary confusion matrix's structure (column sum for the
+predicted-malignant column), not an estimated or fitted quantity.
+
+**How output was verified:** Computed directly from the confusion matrices already in
+`results/*_binary_ham_only_zero_shot_ddi.json` and `results/*_binary_ddi_finetuned.json`
+(committed in the previous entry) -- no new model runs, no new pod access, arithmetic
+re-derived from numbers already verified as real in the prior two entries.
+
+**What was learned / should change next time:** Recall (or accuracy) alone can make a
+miscalibrated-but-lucky model look like the best generaliser -- checking the predicted-
+positive *rate* against the true base rate, not just recall/precision individually,
+would have surfaced efficientnetb4's over-triggering immediately in the original pilot
+entry rather than needing a follow-up investigation. Worth including "predicted-positive
+rate vs. true base rate" as a standard diagnostic alongside recall/precision/kappa for
+any future binary-classification comparison on this project, not just this one.
