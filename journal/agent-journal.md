@@ -1407,3 +1407,90 @@ cost of not following that rule once. (3) A single-run point estimate (e.g. "res
 leads") is not the same claim as a statistically-supported one -- worth running
 bootstrap CIs (or an equivalent) *before* stating a ranking as a project finding in
 future work, not as a retrospective check two tiers later.
+
+---
+
+## 2026-08-28 (continued) -- Tier 1 continuation: threshold-calibrate zero-shot/
+## fine-tuned too, and a paired McNemar's test -- the gap widens, but isn't provable
+
+**What happened:** Student asked to close two loops flagged when the four-tier
+experiment set was surveyed: (1) a paired significance test (McNemar's) for the DDI
+joint-vs-zero-shot-vs-finetuned comparison, since Tier 1's independent bootstrap CIs
+are conservative for a same-examples paired comparison; (2) threshold-calibrating the
+zero-shot and fine-tuned models too, not just joint, to check whether a fairer
+calibration comparison closes the gap the uncalibrated (0.5-threshold) comparison
+showed. Both needed only the raw predictions already exported in the original Tier 1
+pass (`results/raw_predictions.json`, still present on the pod) -- no new training, no
+GPU work at all, continued on the `tier1-threshold-calibration-and-bootstrap-ci` branch
+rather than opening a new tier.
+
+Extended `scripts/tier1_analysis.py`: factored the existing joint-only threshold sweep
+into a reusable `threshold_sweep()` function applied to all three DDI approaches, and
+added `mcnemar_test()` (exact binomial McNemar's test on paired correctness, the
+statistically appropriate test here since all three approaches are scored on the
+identical 99 DDI held-out examples -- a plain independent-samples test like bootstrap
+CI is not designed for this).
+
+**Finding 1 -- calibrating the alternatives does not close the gap to joint; if
+anything it widens.** Even at each approach's own kappa-maximising threshold (not the
+uncalibrated 0.5 default), joint remains clearly ahead for every architecture:
+
+| Architecture | Joint (best-calibrated kappa) | Zero-shot (best-calibrated) | Fine-tuned (best-calibrated) |
+|---|---|---|---|
+| resnet50 | 0.431 | 0.180 | 0.249 |
+| efficientnetb4 | 0.347 | 0.232 | 0.208 |
+| vgg16 | 0.396 | 0.228 | 0.200 |
+
+This rules out the possibility that joint's advantage was an artefact of the
+zero-shot/fine-tuned models simply having a worse default decision threshold -- even
+given every approach its fairest possible threshold, joint's discrimination ability is
+still substantially better.
+
+**Finding 2 -- but no pairwise comparison reaches statistical significance under a
+paired test, for any architecture.** McNemar's exact binomial test on the (uncalibrated,
+0.5-threshold) predictions found every pairwise p-value >= 0.48 (most much higher, up
+to 1.0) across all three architectures and all three pairs (joint-vs-zero-shot,
+joint-vs-finetuned, zero-shot-vs-finetuned). Discordant-pair counts (6-32 out of n=99)
+are simply too small, given how few DDI held-out examples exist, for this more
+statistically appropriate test to detect what the kappa point estimates and Finding 1
+both suggest is a real difference.
+
+**This is not a contradiction between the two findings -- it is the honest outcome of
+combining a kappa-based effect-size measure (imbalance-aware) with a small-sample
+significance test on raw correctness.** The complete, defensible statement for the
+dissertation: three independent lines of evidence now point toward joint training
+being genuinely better (its kappa lead survives fair calibration of all three
+approaches here; its ranking held across 3 independently-trained seeds per
+architecture, Tier 3; its precision/recall balance was already more even in the
+original comparison) -- but DDI's small size (656 images total, 99 held out) means no
+single formal significance test on this dataset can currently prove the difference is
+not chance. This should be reported as a genuine dataset-size limitation, not
+papered over by picking whichever test happens to show significance, and not
+retreated from into "we found nothing" either -- both would misrepresent what the
+evidence actually shows.
+
+**Where uncertain / stuck:** McNemar's test was run on the uncalibrated (0.5-threshold)
+predictions, matching the original bootstrap CI's basis -- a version run on each
+approach's own best-calibrated predictions (Finding 1's thresholds) was not attempted,
+and might behave differently given the different, more separated decision boundaries;
+not done here to keep this pass scoped to what was asked.
+
+**Assumptions made:** That the exact binomial form of McNemar's test (rather than the
+chi-square approximation) is the correct choice throughout, given discordant-pair
+counts as low as 6 in some architecture/pair combinations -- the exact test remains
+valid at any discordant-pair count, where the chi-square approximation is only
+recommended above roughly 25, so using the exact form uniformly avoids needing to
+switch tests case-by-case.
+
+**How output was verified:** Real script execution on the pod, full console output
+read directly (all threshold-calibration and McNemar rows), `results/
+tier1_calibration_bootstrap.json` pulled and available for direct inspection.
+
+**What was learned / should change next time:** A statistically rigorous analysis can
+produce a result that is genuinely inconclusive by the most appropriate formal test,
+even when every other angle points the same direction -- the right response is to
+report that combination honestly (multiple consistent signals, no single test proves
+it, sample size is the limiting factor) rather than either overstating confidence from
+the consistent point estimates or discarding those point estimates because one test
+didn't reach significance. Both of those simpler stories would have been easier to
+write and less accurate.
