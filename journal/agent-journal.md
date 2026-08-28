@@ -1289,3 +1289,93 @@ questions, and only measuring the second one revealed the joint model was alread
 better all along). Worth explicitly asking "what haven't I actually measured yet,
 independent of what I've explained so far" before treating a mechanistic explanation as
 confirmation that the thing being explained was the right thing to focus on.
+
+---
+
+## 2026-08-28 (continued) -- Tier 4: SHAP run for real for the first time; larger
+## Grad-CAM faithfulness sample reveals the binary model's n=30 estimate was optimistic
+
+**What happened:** Branched `tier4-shap-and-larger-faithfulness-sample` from `main`.
+Closed the two gaps flagged repeatedly since 2026-07-31: SHAP (`src.xai.shap_explain`)
+had only ever been wiring-tested against a stub predict function, never a real trained
+model; and the project's only Grad-CAM faithfulness numbers came from a 30-image
+sample, small enough to be a noisy point estimate.
+
+**SHAP against a real model, for the first time.** Wrote `src/run_shap_explain.py`:
+for a sample of HAM10000 validation images, builds a real SHAP explainer around
+resnet50's seven-class model, runs it, and computes IoU/Dice faithfulness for both
+Grad-CAM and SHAP against the same ground-truth masks (via the same
+`compute_overlap` function, so the two are directly comparable). Deliberately scoped
+to the seven-class task only in this first run -- the binary task's single-sigmoid-
+output head (`Dense(1, ...)`) doesn't obviously match `build_explainer`'s
+`output_names=["benign","malignant"]` (2 names for a 1-column `predict()` output), an
+untested combination flagged as an open item rather than risked here.
+
+Tested cautiously: ran 3 images first (succeeded, ~77s, correctly-shaped SHAP output
+`(3, 224, 224, 3, 7)`), then scaled to 15 images (succeeded, ~a few minutes). Saved
+overlay images (Grad-CAM and SHAP, per sample) to `results/xai_overlays/resnet50/` and
+a faithfulness summary to `results/shap_faithfulness_resnet50.json`. On this 15-image
+sample: Grad-CAM mean_iou=0.293/mean_dice=0.423, SHAP mean_iou=0.259/mean_dice=0.393 --
+Grad-CAM slightly more faithful than SHAP on average, but close enough, and n=15 small
+enough, that this should be read as "the two methods are broadly comparable in
+faithfulness here," not "Grad-CAM is proven better." (Per-sample accuracy on this
+random 15-image subset was 8/15=53%, well below resnet50's overall 65.8% seven-class
+accuracy -- small-sample noise, not a new finding, consistent with every other
+small-sample check this session.)
+
+**Larger Grad-CAM faithfulness sample (30 -> 150) for the two recommended-best
+resnet50 models.** Re-ran `src.evaluate_run --faithfulness-samples 150` for
+`resnet50_seven_class` and `resnet50_binary` (joint), writing to new
+`*_faithfulness150.json` files rather than overwriting the committed n=30 results.
+
+| Model | n=30 mean IoU | n=150 mean IoU | n=30 mean Dice | n=150 mean Dice |
+|---|---|---|---|---|
+| seven_class | 0.253 | 0.294 | 0.372 | 0.422 |
+| binary (joint) | 0.215 | 0.157 | 0.304 | 0.226 |
+
+The seven-class number moved modestly (0.253->0.294) and lands close to this same
+session's independent 15-image SHAP-run Grad-CAM average (0.293) -- good cross-check
+agreement from two separately-sampled runs. **The binary model's number moved
+substantially and in the opposite direction** (0.215->0.157, a 27% relative drop) --
+the original n=30 estimate, quoted in `results/confusion_summary.json` and used in
+earlier trade-off framing, was an optimistic estimate that a larger sample corrects
+downward. This should be treated as the more reliable number going forward for the
+binary model's Grad-CAM faithfulness specifically.
+
+**Where uncertain / stuck:**
+- SHAP was run for resnet50 only, and only on the seven-class task -- efficientnetb4,
+  vgg16, and the binary task (once the output_names/single-sigmoid-output mismatch is
+  resolved or confirmed harmless) remain untested.
+- 150 is still not the full validation set (1490 seven-class images) -- chosen as a
+  5x increase over the original 30 at reasonable cost, not as a claim of exhaustive
+  coverage. The binary model's corrected number in particular would benefit from an
+  even larger sample or the full validation set if this number needs to go into a
+  final dissertation table.
+- Did not investigate *why* the binary model's faithfulness estimate was more volatile
+  across sample sizes than the seven-class model's -- plausibly because the binary
+  task's HAM10000-sourced validation rows are a smaller pool to sample from than the
+  seven-class task's, making a 30-image draw proportionally less representative, but
+  not confirmed.
+
+**Assumptions made:** That normalising SHAP's per-class attribution map the same way
+Grad-CAM's heatmap is normalised (`abs(values).sum(axis=-1)` then divide by max) is a
+fair basis for comparison via `compute_overlap`'s fixed 0.5 threshold -- a reasonable,
+documented choice, but not the only valid way to threshold a SHAP attribution map; a
+different normalisation could shift the SHAP faithfulness numbers above.
+
+**How output was verified:** Both experiments' real exit codes and console output were
+checked directly (SHAP's printed per-image IoU values, the `EXIT1=0`/`EXIT2=0` lines
+for the faithfulness150 runs) before pulling and trusting any result file. The
+seven-class n=150 vs. SHAP-run n=15 cross-check (0.294 vs. 0.293 Grad-CAM mean IoU from
+two independently sampled, differently-sized runs) was noticed and used as informal
+corroboration, not assumed to agree in advance.
+
+**What was learned / should change next time:** The binary model's faithfulness
+number is now the second metric this session (after the seven-class/DDI kappa
+rankings) where a small sample (n=30) gave a materially different answer than a larger
+one -- reinforcing that this project's `faithfulness_samples` default of 30
+(`src/evaluate_run.py`) is too small to trust at face value for any final reported
+number, not just for the DDI-related metrics already flagged. Worth revisiting the
+default, or explicitly re-running the full six-model faithfulness check at a larger
+sample size, before treating any of the six models' original `results/*.json`
+faithfulness figures as final.
