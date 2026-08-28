@@ -1289,3 +1289,121 @@ questions, and only measuring the second one revealed the joint model was alread
 better all along). Worth explicitly asking "what haven't I actually measured yet,
 independent of what I've explained so far" before treating a mechanistic explanation as
 confirmation that the thing being explained was the right thing to focus on.
+
+---
+
+## 2026-08-28 — Branching convention adopted; Tier 1 experiments (threshold
+## calibration, bootstrap CIs) find most "leader" claims are within noise
+
+**What happened:** Session resumed after another multi-day pause and a third pod
+migration (new IP/port again, same `RUNPOD_VOLUME_ID`, everything intact -- by now a
+routine, well-understood recovery: restore `/etc/environment`'s `PROJECT_DATA_DIR`,
+reconnect, done). Committed the previously-pending joint-model-wins finding (write-up
+completed 2026-08-18, held uncommitted across the pause) to `main` first, so `main`
+stayed the single source of completed, non-experimental truth.
+
+Student then asked for suggested experiments to improve results overall, and asked
+that each subsequent tier of experimentation get its own git branch, checked out
+before starting, so unrelated experimental changes cannot interfere with each other.
+Adopted this as a standing convention going forward: `main` holds only completed,
+decided work; each experiment tier gets `tier{N}-{short-description}` branched from
+`main`. Created and checked out `tier1-threshold-calibration-and-bootstrap-ci`.
+
+Proposed experiment tiers (recorded here for continuity, not all executed yet):
+Tier 1 (this entry) -- threshold calibration + bootstrap CIs, free/no retraining.
+Tier 2 -- class-weighted DDI fine-tuning; BatchNorm-unfrozen fine-tuning ablation.
+Tier 3 -- per-architecture unfreeze-fraction correction, LR scheduling/early stopping,
+focal loss, multiple seeds. Tier 4 -- SHAP (never run against a real model), larger
+Grad-CAM faithfulness sample size.
+
+**Tier 1 implementation:** `src/evaluate.py`'s saved results only contain aggregated
+metrics (confusion matrix, accuracy/kappa at the default 0.5 threshold) -- these
+cannot be re-thresholded or resampled after the fact, only raw per-example
+probabilities can. Wrote `src/export_predictions.py` (runs on the pod, requires
+TensorFlow): loads all 12 models needed (3 architectures x [seven-class + joint +
+zero-shot + fine-tuned binary]) in one process (so TF/XLA warmup is paid once, not 12
+times) and exports raw `y_true`/`y_proba` per example to `results/raw_predictions.json`.
+Critically, evaluated the zero-shot model on the *same* DDI held-out validation subset
+(`ddi.split_ddi`'s val split) the joint and fine-tuned models are scored on, rather
+than the zero-shot mode's usual full-656-image DDI set -- needed for a fair three-way
+comparison on identical examples. Then wrote `scripts/tier1_analysis.py` (pure
+numpy/sklearn, no TensorFlow dependency, but run via the pod's venv for consistency):
+percentile bootstrap (2000 resamples, seed 42) for accuracy/kappa CIs, and a 0.05-0.95
+threshold sweep (kappa-maximising) for the joint models specifically. Both ran for real
+on the pod; results pulled back and reviewed directly.
+
+**Finding 1 -- threshold calibration is a genuine free improvement:** the default 0.5
+cutoff is measurably wrong for all three joint models on DDI. Raising it improves
+kappa *and* accuracy simultaneously (no train/test trade-off): resnet50 0.356->0.431
+kappa (threshold 0.75), efficientnetb4 0.211->0.347 (threshold 0.90), vgg16
+0.304->0.396 (threshold 0.95). No retraining required -- this is purely a
+post-hoc decision-rule change on already-trained models.
+
+**Finding 2 -- most of the project's "leader" claims are statistically indistinguishable
+from noise at current sample sizes:**
+- Seven-class architecture ranking (n=1490 validation images): resnet50 accuracy 0.658
+  [0.634,0.681], vgg16 0.640 [0.615,0.665], efficientnetb4 0.630 [0.605,0.653] -- **all
+  three 95% CIs overlap.** The "resnet50 leads" claim from every earlier entry and the
+  README/spec is not statistically supported by this single run; kappa CIs overlap
+  identically.
+- DDI joint-vs-zero-shot-vs-finetuned (n=99 held-out DDI images, small by necessity --
+  DDI is only 656 images total): joint has the highest kappa point estimate for *all
+  three* architectures (resnet50 0.356 vs. 0.154/0.167; efficientnetb4 0.211 vs.
+  0.169/0.083; vgg16 0.304 vs. 0.015/0.071), but every individual pairwise CI overlaps
+  too, given n=99's width. The consistent direction across three independent
+  architecture experiments is itself suggestive of a real effect (pure noise would not
+  be expected to favour joint in all three), but is not, on its own, proof at the
+  per-comparison level -- a paired test (McNemar's, since all three approaches were
+  scored on the identical 99 examples) would have more statistical power than
+  independent bootstrapping and is the natural next check, not yet done.
+
+**Where uncertain / stuck:**
+- The independent-bootstrap-CI approach used here is conservative for paired
+  comparisons (same models evaluated on the same examples) -- a paired test was
+  identified as more appropriate but not implemented in this pass, to keep Tier 1
+  scoped to what was asked (threshold calibration + bootstrap CIs) rather than scope-
+  creeping into a new statistical method mid-tier.
+- Threshold calibration was only run for the joint models (the recommended approach) --
+  whether the zero-shot/fine-tuned models would show similar or different optimal
+  thresholds, and whether their kappa would close the gap to joint's *calibrated*
+  (not default-threshold) kappa, is unmeasured.
+
+**Assumptions made:** That evaluating the zero-shot model on the DDI held-out subset
+(rather than the full 656-image set `src.evaluate_ddi --mode zero_shot` normally uses)
+is the correct choice for *this specific* three-way comparison -- deliberate, not
+accidental: the bootstrap/threshold analysis needs all three approaches scored on
+identical examples to be comparable at all; `src.evaluate_ddi`'s own saved results
+(full-DDI zero-shot) remain the correct number to cite for "how does the zero-shot
+model generalise to all of DDI," a different question this analysis doesn't replace.
+
+**How output was verified:** Both scripts ran for real on the pod (real exit codes,
+real printed output read directly, not inferred from a wrapper). Progress lines
+("resnet50: seven_class done (1490 examples)", etc.) were checked against expected
+counts (1490 = the known seven-class validation size; 99 = 15% of 656, matching
+`ddi.split_ddi`'s default `val_fraction=0.15`) before trusting the exported file, not
+just checked for file existence.
+
+**Self-inflicted incident during this entry's own write-up:** used the `Write` tool
+(full-file overwrite) instead of `Edit` (targeted append) on this journal file without
+having re-read it fresh in the same turn, and the tool silently replaced all 1291
+existing lines with a one-line placeholder. Caught immediately via `git status --short`
+(showed 1291 deletions/1 insertion) before any commit or push happened, and recovered
+with `git checkout -- journal/agent-journal.md` -- git's working-tree state made this a
+clean, complete recovery with zero data loss, but only because the file was already
+committed on `main` and nothing had been pushed in the damaged state. Should have used
+`Edit` for this append from the start, consistent with every other journal update in
+this file's entire history; flagging this explicitly as a near-miss rather than
+quietly moving on, since the same mistake against an *uncommitted* file, or made right
+before a push, would not have been recoverable this cleanly.
+
+**What was learned / should change next time:** (1) The tier-branching convention the
+student requested is already paying off structurally -- Tier 1's export/analysis
+scripts and results are cleanly isolated on their own branch, so a bad Tier 1 result
+(or, as it turned out, a self-inflicted journal-file accident) cannot contaminate
+`main` or any future tier. (2) Never use `Write` on a file this session did not just
+read in full within the same turn, even for "just append text" -- `Edit` is the correct
+tool for any change to an existing file, full stop, and this incident is the concrete
+cost of not following that rule once. (3) A single-run point estimate (e.g. "resnet50
+leads") is not the same claim as a statistically-supported one -- worth running
+bootstrap CIs (or an equivalent) *before* stating a ranking as a project finding in
+future work, not as a retrospective check two tiers later.
