@@ -1,0 +1,81 @@
+{
+  "architecture": "vgg16",
+  "mode": "joint",
+  "ddi_held_out_validation": {
+    "accuracy": 0.7070707070707071,
+    "precision_per_class": {
+      "benign": 0.8333333333333334,
+      "malignant": 0.45454545454545453
+    },
+    "recall_per_class": {
+      "benign": 0.7534246575342466,
+      "malignant": 0.5769230769230769
+    },
+    "f1_per_class": {
+      "benign": 0.7913669064748201,
+      "malignant": 0.5084745762711864
+    },
+    "roc_auc": 0.7328767123287672,
+    "cohens_kappa": 0.30399999999999994,
+    "confusion_matrix": [
+      [
+        55,
+        18
+      ],
+      [
+        11,
+        15
+      ]
+    ],
+    "skin_tone_stratified": {
+      "FST_III_IV": {
+        "n": 36,
+        "accuracy": 0.6388888888888888,
+        "precision": {
+          "benign": 0.7307692307692307,
+          "malignant": 0.4
+        },
+        "recall": {
+          "benign": 0.76,
+          "malignant": 0.36363636363636365
+        },
+        "f1": {
+          "benign": 0.7450980392156863,
+          "malignant": 0.38095238095238093
+        }
+      },
+      "FST_I_II": {
+        "n": 32,
+        "accuracy": 0.71875,
+        "precision": {
+          "benign": 0.9411764705882353,
+          "malignant": 0.4666666666666667
+        },
+        "recall": {
+          "benign": 0.6666666666666666,
+          "malignant": 0.875
+        },
+        "f1": {
+          "benign": 0.7804878048780488,
+          "malignant": 0.6086956521739131
+        }
+      },
+      "FST_V_VI": {
+        "n": 31,
+        "accuracy": 0.7741935483870968,
+        "precision": {
+          "benign": 0.8695652173913043,
+          "malignant": 0.5
+        },
+        "recall": {
+          "benign": 0.8333333333333334,
+          "malignant": 0.5714285714285714
+        },
+        "f1": {
+          "benign": 0.851063829787234,
+          "malignant": 0.5333333333333333
+        }
+      }
+    }
+  }
+}

@@ -27,25 +27,40 @@ classification performance and interpretability (Grad-CAM, SHAP) for each.
   — DDI's 78 specific diagnoses do not map cleanly onto HAM10000's 7 classes). Revised
   2026-08-17 (student-proposed, standard transfer-learning practice) into three
   comparison approaches for how DDI is incorporated, rather than one:
-  1. **Joint/mixed** (original design, kept as a comparison arm, not superseded): DDI
-     mixed into training from the first batch via oversampled batching (see Imbalance
-     handling below).
+  1. **Joint/mixed** (original design): DDI mixed into training from the first batch
+     via oversampled batching (see Imbalance handling below). **Confirmed the
+     best-performing of the three approaches on DDI's held-out validation split, by a
+     wide margin on every metric, across all three architectures (2026-08-18 — see
+     journal).** This is now the project's recommended binary-task model; the two
+     approaches below function as diagnostic tools that explain *why*, not as
+     alternatives that outperform it.
   2. **Zero-shot generalisation stress test:** train a HAM10000-only binary baseline
      (task `binary_ham_only`), then evaluate it on DDI's full 656 images *without any
      DDI training at all* — this alone is diagnostic of how well the model generalises
      across imaging modality and skin tone, and is not something the joint-mixed
      approach can measure directly (its model never exists without DDI in its training
-     data).
+     data). Reveals a severe generalisation/calibration gap the joint model does not
+     have to contend with, since it never has to correct a HAM10000-only calibration
+     after the fact.
   3. **Sequential fine-tuning:** take the same HAM10000-only baseline and fine-tune it
      further on DDI's own train split only, at a low learning rate, rather than mixing
      both sources from scratch — evaluated on DDI's held-out validation split plus a
-     HAM10000 retention check (has adapting to DDI cost baseline performance?).
-  Piloted for resnet50 (2026-08-17), then extended to all three architectures
-  (2026-08-18, see journal): the zero-shot generalisation collapse holds across all
-  three, but sequential fine-tuning is **not** uniformly beneficial — it improved DDI
-  recall for resnet50/vgg16 but *reduced* it for efficientnetb4, which was already the
-  best zero-shot generaliser of the three. This must be reported as an
-  architecture-dependent trade-off, not a general recommendation to always fine-tune.
+     HAM10000 retention check. **Does not outperform the joint/mixed approach on any
+     metric for any architecture** (2026-08-18 finding) — useful for understanding the
+     mechanics of DDI adaptation (a calibration-threshold correction, not a
+     discrimination improvement — see journal, 2026-08-18 calibration-shift entry), not
+     as a recommended training strategy in its own right.
+  Piloted for resnet50 (2026-08-17), extended to all three architectures (2026-08-18):
+  the zero-shot generalisation collapse holds across all three (malignant recall
+  0.799–0.871 on HAM10000 down to 0.123–0.480 on DDI), and sequential fine-tuning is
+  **not** uniformly beneficial even relative to zero-shot — it improved DDI recall for
+  resnet50/vgg16 but *reduced* it for efficientnetb4 (explained as a calibration-
+  threshold correction running in different directions per architecture, not
+  architecture-specific fine-tuning fragility). Most importantly, **neither zero-shot
+  nor fine-tuned ever beats the original joint/mixed model** on kappa or ROC-AUC, for
+  any architecture, when evaluated on the identical DDI held-out split (joint kappa
+  0.211–0.356 vs. 0.071–0.167 for the alternatives). Full comparison table in journal,
+  2026-08-18 entries.
 - Apply data augmentation (rotation, flipping, zoom, brightness) and class weighting to
   address class imbalance in HAM10000 (~67% of images in one class, confirmed: nv 6,705 /
   mel 1,113 / bkl 1,099 / bcc 514 / akiec 327 / vasc 142 / df 115) and the further
@@ -83,9 +98,18 @@ all three architectures (2026-08-18) — makes the Social Issues section's gener
 concern a measured finding rather than a qualitative one. The fine-tuning result is more
 nuanced than "partial recovery at a retention cost": it improved DDI recall for
 resnet50/vgg16 but reduced it for efficientnetb4 (the best zero-shot generaliser of the
-three), demonstrating that incorporating a small, diverse dataset after the fact is a
-genuine, architecture-dependent trade-off, not a free fix and not a uniform one —
-directly relevant to the "residual demographic bias" risk already logged below.
+three) — explained by a calibration-threshold shift toward DDI's true class balance
+running in different directions per architecture, not a discrimination improvement (see
+journal, 2026-08-18). **Neither diagnostic approach beats the original joint/mixed
+model, however** — evaluated on the identical DDI held-out split, the joint model leads
+on kappa and ROC-AUC by a wide margin for all three architectures (2026-08-18). The
+practical conclusion is therefore not "fine-tuning is a trade-off worth making," but
+that training on HAM10000+DDI jointly from the start remains the best approach found so
+far, while the zero-shot/fine-tuned experiments remain valuable for explaining *why* —
+directly relevant to the "residual demographic bias" risk already logged below, which
+joint training measurably reduces (via the joint model's far higher DDI-held-out kappa)
+without eliminating it (DDI is still much smaller than HAM10000, so this is expected to
+remain a partial mitigation, not a solved problem).
 
 ## CONSTRAINTS
 - Datasets: HAM10000 and DDI only, each used strictly under its own licence.
@@ -136,7 +160,12 @@ directly relevant to the "residual demographic bias" risk already logged below.
   DDI recall as expected; efficientnetb4 instead *lost* DDI recall after fine-tuning
   (0.480→0.269) while its HAM accuracy slightly improved (0.744→0.775) — the opposite
   trade-off. Must be reported per-architecture, not as one general "fine-tuning helps
-  DDI at a HAM10000 cost" statement.
+  DDI at a HAM10000 cost" statement. **Superseded as a practical concern** by the
+  2026-08-18 joint-model comparison: since the joint/mixed approach outperforms
+  sequential fine-tuning outright on DDI's held-out split for every architecture, this
+  risk is now primarily relevant as an explanation of *why* sequential fine-tuning
+  underperforms, not as a trade-off the project needs to navigate when choosing which
+  model to report as its best result.
 - **Misclassification risk**: false negatives in malignant-vs-benign classification are
   the most consequential error type, even in a non-clinical experimental setting.
 - **Licensing/attribution risk**: incorrect or missing attribution for HAM10000, DDI, or

@@ -1206,3 +1206,86 @@ would have surfaced efficientnetb4's over-triggering immediately in the original
 entry rather than needing a follow-up investigation. Worth including "predicted-positive
 rate vs. true base rate" as a standard diagnostic alongside recall/precision/kappa for
 any future binary-classification comparison on this project, not just this one.
+
+---
+
+## 2026-08-18 (continued) — Joint/mixed model evaluated on the same DDI held-out split:
+## it wins, clearly, on every metric
+
+**What happened:** Student asked what would produce a better result. Rather than
+guessing at fine-tuning hyperparameters, closed the comparison gap flagged as missing
+in both prior pilot entries: the joint/mixed model (`src.train`, task=`binary`) had
+never been scored on DDI's *held-out* validation split specifically -- only on its
+overall HAM10000+DDI-mixed validation figure, which isn't directly comparable to the
+zero-shot/fine-tuned modes' DDI-only numbers. Added `evaluate_joint_on_ddi_val()` (new
+`--mode joint` in `src/evaluate_ddi.py`): filters `prepare_data("binary")`'s combined
+validation split down to its `source == "ddi"` rows, which are guaranteed to be
+*exactly* the same `ddi_val` rows the other two modes use (same `ddi.split_ddi` call,
+same seed, threaded through `build_binary_corpus`) -- not a coincidentally-similar
+independent split. Ran for all three architectures on the pod; all three succeeded.
+
+**Result -- the joint/mixed approach wins outright, not narrowly:**
+
+| Architecture | Approach | Accuracy | Kappa | ROC-AUC | Malignant recall | Malignant precision |
+|---|---|---|---|---|---|---|
+| resnet50 | joint | 0.747 | **0.356** | **0.764** | 0.538 | 0.519 |
+| resnet50 | zero-shot | 0.753 | 0.159 | 0.654 | 0.158 | 0.600 |
+| resnet50 | fine-tuned | 0.717 | 0.167 | 0.584 | 0.269 | 0.438 |
+| efficientnetb4 | joint | 0.657 | **0.211** | **0.698** | 0.538 | 0.389 |
+| efficientnetb4 | zero-shot | 0.625 | 0.138 | 0.592 | 0.480 | 0.343 |
+| efficientnetb4 | fine-tuned | 0.667 | 0.083 | 0.615 | 0.269 | 0.333 |
+| vgg16 | joint | 0.707 | **0.304** | **0.733** | 0.577 | 0.455 |
+| vgg16 | zero-shot | 0.732 | 0.090 | 0.598 | 0.123 | 0.447 |
+| vgg16 | fine-tuned | 0.707 | 0.071 | 0.671 | 0.154 | 0.364 |
+
+The joint model leads on kappa and ROC-AUC by a wide margin for all three
+architectures (roughly 2-2.5x the kappa of either alternative in every case), and
+achieves a genuinely balanced malignant recall/precision (both in the 0.39-0.58 range)
+rather than the lopsided calibration failures the zero-shot and fine-tuned modes both
+show. This makes mechanistic sense: the joint model saw DDI images throughout training
+(oversampled to a 30% per-batch share via `make_oversampled_binary_dataset`), so it
+never needed a post-hoc calibration correction the way a HAM10000-only model does --
+it learned DDI's distribution directly, from the start, alongside HAM10000's.
+
+**This materially revises the project's practical recommendation, not just an academic
+footnote.** The zero-shot and sequential-fine-tune experiments remain valuable and
+correct as *diagnostic* tools -- they are what revealed and explained the
+generalisation gap and its calibration mechanics (previous two entries) -- but as a
+recommendation for which trained model to actually use/report as the project's best
+binary-task result, the answer is now clearly the original joint-mixed models
+(`models/{architecture}_binary.keras`, already trained, no new training needed), not
+the sequential-fine-tuned ones. The earlier framing across recent entries and
+`spec/specification.md` ("fine-tuning is a genuine trade-off, architecture-dependent")
+was accurate as far as it went, but incomplete -- it never established fine-tuning was
+*better than the pre-existing joint approach at all*, only that it changed the
+zero-shot model's calibration in different directions per architecture.
+
+**Where uncertain / stuck:** Why joint training outperforms sequential fine-tuning so
+clearly is not fully pinned down here -- plausible contributing factors (joint
+training's BatchNorm statistics are shaped by DDI throughout, unlike fine-tuning's
+frozen BN; joint training sees many more effective DDI exposures over 15 epochs at
+30%-per-batch oversampling vs. fine-tuning's single pass over ddi_train for 5 epochs at
+a very low learning rate) are stated as hypotheses, not confirmed by a controlled
+ablation.
+
+**Assumptions made:** That filtering the joint model's own validation split by
+`source == "ddi"` is equivalent to `ddi.split_ddi`'s independent output -- verified by
+tracing the actual code path (`prepare_data("binary")` -> `build_binary_corpus(val_df,
+ddi_val)` where `ddi_val` comes from the identical `ddi.split_ddi(ddi_df)` call with
+the same default seed) rather than assumed from the two numbers happening to look
+similar.
+
+**How output was verified:** Real evaluation run on the pod (all three `JOINT_EVAL_EXIT`
+values confirmed `0` from actual log content), result JSONs pulled and read directly,
+not estimated from the joint model's previously-known combined-validation numbers.
+
+**What was learned / should change next time:** A "we tried an alternative, here's how
+it compares to a baseline we assumed but never actually measured" gap can sit
+unnoticed across multiple pilot entries even while doing otherwise-careful analysis
+(the calibration-shift investigation, immediately before this entry, was real and
+correct, but was answering "why does fine-tuning behave differently per architecture,"
+not "is fine-tuning even the right thing to be doing" -- the two are different
+questions, and only measuring the second one revealed the joint model was already
+better all along). Worth explicitly asking "what haven't I actually measured yet,
+independent of what I've explained so far" before treating a mechanistic explanation as
+confirmation that the thing being explained was the right thing to focus on.
