@@ -1444,3 +1444,72 @@ elsewhere with the same structure (same task, same direction), since that change
 explanation from "this one run was unlucky" to "this category of measurement has a
 systematic issue," which is a materially different and more useful finding for the
 dissertation to report.
+
+---
+
+## 2026-08-28 (continued) -- SHAP extended to efficientnetb4 and vgg16: which XAI
+## method is "more faithful" flips by architecture, but the sample is too small to
+## trust that flip on its own
+
+**What happened:** Ran `src.run_shap_explain` (unchanged from the resnet50 run) for
+efficientnetb4 and vgg16, same n=15 sample size, seven-class task, same random seed
+(so the 15 sampled HAM10000 images are identical across all three architectures --
+a genuine same-sample comparison, not just same-count). Both completed with real exit
+code 0. Continued on `tier4-shap-and-larger-faithfulness-sample` rather than a new
+tier, matching the established pattern of extending an existing tier's experiment to
+cover the remaining architectures.
+
+**Result -- the "which XAI method is more faithful" answer flips by architecture:**
+
+| Architecture | Grad-CAM mean IoU | SHAP mean IoU | Winner (this sample) |
+|---|---|---|---|
+| resnet50 | 0.293 | 0.259 | Grad-CAM |
+| efficientnetb4 | 0.185 | 0.273 | SHAP |
+| vgg16 | 0.200 | 0.218 | SHAP (narrowly) |
+
+This is a genuinely interesting result for Objective 5's accuracy/interpretability
+trade-off analysis -- it suggests XAI method faithfulness may itself be architecture-
+dependent, not a fixed property of Grad-CAM vs. SHAP in general.
+
+**Important caveat, checked before treating this as a real finding rather than noise:**
+efficientnetb4's Grad-CAM figure on this 15-image sample (0.185) diverges substantially
+from its more reliable n=150 estimate from earlier this session (0.259, same
+Tier 4 branch) -- the same small-sample unreliability pattern already established
+twice this session (the binary-task faithfulness correction; the DDI held-out
+comparisons). resnet50's and vgg16's n=15 Grad-CAM figures (0.293, 0.200) do agree
+reasonably well with their own n=150 estimates (0.294, 0.196) -- so this isn't a
+uniform "all n=15 numbers are unreliable" problem, but efficientnetb4 specifically
+drew an unrepresentative 15-image sample for Grad-CAM. Since the SHAP-vs-Grad-CAM
+comparison uses the *same* 15 images for both methods within each architecture, the
+comparison itself is internally fair (both methods see the same efficientnetb4
+sample's difficulty), but the *absolute* Grad-CAM number for efficientnetb4 in this
+table should not be read against the other two architectures' Grad-CAM numbers without
+accounting for this.
+
+**Honest conclusion:** the architecture-dependent flip is suggestive and worth noting
+in the dissertation's interpretability discussion, but should be reported as "this
+15-image sample suggests XAI method faithfulness may vary by architecture, not yet
+confirmed at a reliable sample size" rather than as a settled finding -- consistent
+with how every other small-sample result this session has needed the same caveat.
+
+**Where uncertain / stuck:** A larger, per-architecture SHAP sample (matching the n=150
+scale now used for Grad-CAM) would be needed to confirm or overturn this flip -- not
+attempted here given SHAP's substantially higher per-image cost (Partition explainer
+with `max_evals=500`) compared to Grad-CAM's single backward pass; scaling SHAP to
+n=150 x 3 architectures would be a meaningfully larger and slower undertaking than
+anything run so far this session.
+
+**Assumptions made:** None beyond the previous SHAP entry's (SHAP attribution
+normalisation for `compute_overlap` comparability).
+
+**How output was verified:** Both runs' real exit codes checked from log content;
+all 15-per-architecture per-image IoU values read directly from console output before
+pulling and aggregating the result files.
+
+**What was learned / should change next time:** Extending an experiment to more
+architectures can reveal that an apparently clean per-architecture number (Grad-CAM's
+n=15 IoU here) doesn't actually agree with that same architecture's own larger-sample
+estimate from earlier in the session -- worth cross-checking every new small-sample
+number against any existing larger-sample estimate for the same model before
+interpreting a cross-architecture comparison built on it, not just trusting that
+"same script, same sample size" implies comparable reliability across architectures.

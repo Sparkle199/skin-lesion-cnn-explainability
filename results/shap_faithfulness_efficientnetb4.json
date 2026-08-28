@@ -1,0 +1,197 @@
+[
+  {
+    "image_id": "ISIC_0025138",
+    "true_class": "nv",
+    "predicted_class": "nv",
+    "gradcam_faithfulness": {
+      "iou": 0.0,
+      "dice": 0.0
+    },
+    "shap_faithfulness": {
+      "iou": 0.3686428303224999,
+      "dice": 0.5386983691510441
+    }
+  },
+  {
+    "image_id": "ISIC_0030360",
+    "true_class": "mel",
+    "predicted_class": "mel",
+    "gradcam_faithfulness": {
+      "iou": 0.36533630147877244,
+      "dice": 0.5351594344676589
+    },
+    "shap_faithfulness": {
+      "iou": 0.1813823890703179,
+      "dice": 0.30706804291040046
+    }
+  },
+  {
+    "image_id": "ISIC_0033696",
+    "true_class": "mel",
+    "predicted_class": "bcc",
+    "gradcam_faithfulness": {
+      "iou": 0.07493715822310558,
+      "dice": 0.13942611928492327
+    },
+    "shap_faithfulness": {
+      "iou": 0.1436529606828347,
+      "dice": 0.2512177480781663
+    }
+  },
+  {
+    "image_id": "ISIC_0024921",
+    "true_class": "nv",
+    "predicted_class": "bkl",
+    "gradcam_faithfulness": {
+      "iou": 0.27054311774461026,
+      "dice": 0.4258700298575647
+    },
+    "shap_faithfulness": {
+      "iou": 0.11343894175317186,
+      "dice": 0.20376320155383806
+    }
+  },
+  {
+    "image_id": "ISIC_0032314",
+    "true_class": "bcc",
+    "predicted_class": "bcc",
+    "gradcam_faithfulness": {
+      "iou": 0.22932322778170294,
+      "dice": 0.37308857849454874
+    },
+    "shap_faithfulness": {
+      "iou": 0.10289289973335478,
+      "dice": 0.18658729194508566
+    }
+  },
+  {
+    "image_id": "ISIC_0034146",
+    "true_class": "nv",
+    "predicted_class": "bcc",
+    "gradcam_faithfulness": {
+      "iou": 0.2635740091104246,
+      "dice": 0.4171880827083247
+    },
+    "shap_faithfulness": {
+      "iou": 0.3495841697734442,
+      "dice": 0.5180620484487888
+    }
+  },
+  {
+    "image_id": "ISIC_0031378",
+    "true_class": "bcc",
+    "predicted_class": "bcc",
+    "gradcam_faithfulness": {
+      "iou": 0.04440741512184961,
+      "dice": 0.08503849068645047
+    },
+    "shap_faithfulness": {
+      "iou": 0.3398632047280696,
+      "dice": 0.5073103038112703
+    }
+  },
+  {
+    "image_id": "ISIC_0032026",
+    "true_class": "nv",
+    "predicted_class": "nv",
+    "gradcam_faithfulness": {
+      "iou": 0.02289076376554174,
+      "dice": 0.04475700549152395
+    },
+    "shap_faithfulness": {
+      "iou": 0.46675065947478245,
+      "dice": 0.6364417243785903
+    }
+  },
+  {
+    "image_id": "ISIC_0034208",
+    "true_class": "mel",
+    "predicted_class": "mel",
+    "gradcam_faithfulness": {
+      "iou": 0.06956624605678234,
+      "dice": 0.13008309922504627
+    },
+    "shap_faithfulness": {
+      "iou": 0.31741758936339504,
+      "dice": 0.48187847486806085
+    }
+  },
+  {
+    "image_id": "ISIC_0033536",
+    "true_class": "akiec",
+    "predicted_class": "df",
+    "gradcam_faithfulness": {
+      "iou": 0.22813697832989666,
+      "dice": 0.3715171554237096
+    },
+    "shap_faithfulness": {
+      "iou": 0.3203833958963519,
+      "dice": 0.48528843499861996
+    }
+  },
+  {
+    "image_id": "ISIC_0031203",
+    "true_class": "mel",
+    "predicted_class": "mel",
+    "gradcam_faithfulness": {
+      "iou": 0.22094305574121106,
+      "dice": 0.3619219663067428
+    },
+    "shap_faithfulness": {
+      "iou": 0.47436139720936094,
+      "dice": 0.6434804900714598
+    }
+  },
+  {
+    "image_id": "ISIC_0025787",
+    "true_class": "nv",
+    "predicted_class": "nv",
+    "gradcam_faithfulness": {
+      "iou": 0.2771659588761727,
+      "dice": 0.43403280043583625
+    },
+    "shap_faithfulness": {
+      "iou": 0.43072783356303734,
+      "dice": 0.6021100917431192
+    }
+  },
+  {
+    "image_id": "ISIC_0028204",
+    "true_class": "nv",
+    "predicted_class": "nv",
+    "gradcam_faithfulness": {
+      "iou": 0.1873917561482508,
+      "dice": 0.31563593932322054
+    },
+    "shap_faithfulness": {
+      "iou": 0.015917881582862243,
+      "dice": 0.03133694537999707
+    }
+  },
+  {
+    "image_id": "ISIC_0033126",
+    "true_class": "nv",
+    "predicted_class": "nv",
+    "gradcam_faithfulness": {
+      "iou": 0.19903896897480766,
+      "dice": 0.33199749820473023
+    },
+    "shap_faithfulness": {
+      "iou": 0.26306647228512053,
+      "dice": 0.4165520628683694
+    }
+  },
+  {
+    "image_id": "ISIC_0033550",
+    "true_class": "akiec",
+    "predicted_class": "df",
+    "gradcam_faithfulness": {
+      "iou": 0.32477585342763265,
+      "dice": 0.49031064777838496
+    },
+    "shap_faithfulness": {
+      "iou": 0.20806910124644654,
+      "dice": 0.3444655624943434
+    }
+  }
+]
