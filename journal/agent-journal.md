@@ -1379,3 +1379,68 @@ number, not just for the DDI-related metrics already flagged. Worth revisiting t
 default, or explicitly re-running the full six-model faithfulness check at a larger
 sample size, before treating any of the six models' original `results/*.json`
 faithfulness figures as final.
+
+---
+
+## 2026-08-28 (continued) -- Tier 4 completed: n=150 faithfulness re-run for all 6
+## base models finds a systematic pattern, not architecture-specific noise
+
+**What happened:** Extended the n=30->150 Grad-CAM faithfulness re-run (previous
+entry, resnet50 only) to the remaining 4 base (architecture, task) combinations
+(efficientnetb4/vgg16 x seven_class/binary), completing the full 6-model set on the
+same `tier4-shap-and-larger-faithfulness-sample` branch. Re-used `src.evaluate_run
+--faithfulness-samples 150`, writing to `*_faithfulness150.json` rather than
+overwriting the committed n=30 results. All 4 runs completed with real exit code 0.
+
+**Full 6-model comparison:**
+
+| Model | n=30 IoU | n=150 IoU | Δ% | n=30 Dice | n=150 Dice | Δ% |
+|---|---|---|---|---|---|---|
+| resnet50_seven_class | 0.253 | 0.294 | +16.5% | 0.372 | 0.422 | +13.2% |
+| resnet50_binary | 0.215 | 0.157 | -27.1% | 0.304 | 0.226 | -25.5% |
+| efficientnetb4_seven_class | 0.239 | 0.259 | +8.3% | 0.360 | 0.379 | +5.3% |
+| efficientnetb4_binary | 0.167 | 0.141 | -15.5% | 0.259 | 0.222 | -14.3% |
+| vgg16_seven_class | 0.196 | 0.196 | +0.2% | 0.302 | 0.302 | +0.2% |
+| vgg16_binary | 0.154 | 0.115 | -25.2% | 0.236 | 0.181 | -23.1% |
+
+**This is now a clear, systematic pattern, not architecture-specific noise from the
+previous entry's resnet50-only result.** Every seven-class model's n=30 estimate was
+reasonably close to its n=150 value (vgg16 literally unchanged at 0.196; resnet50 and
+efficientnetb4 moved modestly upward). Every binary model's n=30 estimate was a
+substantial overestimate (-15% to -27%), consistently across all three architectures.
+This points to something structural about how the binary task's faithfulness sample is
+drawn (likely: the binary task's HAM10000-sourced validation pool available for the
+faithfulness sample differs in size/composition from the seven-class task's, or the
+binary decision surface's Grad-CAM behaviour is inherently more sample-sensitive) --
+not investigated further here, but no longer explainable as one architecture's fluke.
+
+**Good news buried in this correction:** `src.trade_off`'s "resnet50 leads on both
+accuracy and faithfulness" summary is driven by the seven-class faithfulness ranking
+specifically (`build_comparison_table` only reads `seven["faithfulness"]`, never the
+binary task's). That ranking -- resnet50 (0.294) > efficientnetb4 (0.259) > vgg16
+(0.196) -- is **identical in order** before and after this correction, despite the
+absolute IoU values shifting. The headline finding this project has repeated since the
+first full training run is, if anything, more robustly supported now than it was on
+the original n=30 sample, not undermined by it.
+
+**Where uncertain / stuck:** The systematic binary-vs-seven-class difference in
+n=30-estimate reliability is observed but not explained -- would need inspecting the
+actual pool of HAM10000-sourced rows each task's faithfulness check samples from (via
+`run_faithfulness_check`'s `ham_rows` argument in `src/evaluate_run.py`) to confirm the
+"smaller/differently-composed pool" hypothesis, not done here.
+
+**Assumptions made:** None beyond the previous entry's.
+
+**How output was verified:** All 4 real exit codes checked from log content
+before pulling results; the full 6-model table computed directly from the pulled JSON
+files (Python, not hand-calculated), including the percentage deltas.
+
+**What was learned / should change next time:** A pattern that looked like it might be
+one model's peculiarity (resnet50_binary's -27% correction, previous entry) turned out
+to be a property shared by an entire task category across all three architectures once
+checked completely -- worth remembering as a general instinct: before writing up a
+correction as isolated to one model, check whether the same correction shows up
+elsewhere with the same structure (same task, same direction), since that changes the
+explanation from "this one run was unlucky" to "this category of measurement has a
+systematic issue," which is a materially different and more useful finding for the
+dissertation to report.
