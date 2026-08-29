@@ -1620,3 +1620,108 @@ already failed. Separately: a script step that renames/moves a result file shoul
 always gate on the producing command's actual exit code, never on "does a file exist
 at the expected path" alone -- the latter can silently succeed against a stale file
 left over from a previous, unrelated run.
+
+---
+
+## 2026-08-29 (continued) -- SHAP pushed to n=500 for resnet50/vgg16;
+## efficientnetb4 hits a container memory ceiling at n=500, resolved at n=400/n=200
+
+**What happened:** Having quantified (previous entry) that n=500 would only narrow
+the 95% CI by ~45% over n=150 without changing any conclusion, the student asked to
+run it anyway for tighter reported numbers. Ran `scripts/run_shap_n500.sh resnet50
+efficientnetb4 vgg16` (same pattern as the n=150 script: exit-code-gated rename, see
+previous entry). resnet50 and vgg16 both completed cleanly (exit 0, ~14 min and ~12
+min respectively). **efficientnetb4 was killed with exit code 137 (SIGKILL) right
+after its SHAP explainer finished all 500 images**, with no Python traceback -- the
+process was killed externally, not by an application-level error.
+
+**Root cause, diagnosed rather than assumed:** `free -h` on the pod reported 124GB
+total host RAM, which was misleading -- this pod runs in a container with its own
+cgroup memory limit, read directly from `/sys/fs/cgroup/memory.max` as ~61,000,000,000
+bytes (~57 GiB), far below the host figure. `src/run_shap_explain.py` loads the
+entire N-image batch into one array and calls SHAP's `explain_images()` on the whole
+batch at once (nothing is streamed or released per-image), so peak memory scales with
+N x image_size^2. efficientnetb4 uses 380x380 input images versus resnet50/vgg16's
+224x224 (roughly 2.9x the pixels), which is exactly why the other two architectures
+sailed through n=500 (peaking well under the ceiling) while efficientnetb4's memory
+climbed past 47GB by n=400-equivalent progress and past the ~57GiB ceiling by n=500,
+getting killed at the exact point where the explainer finishes and assembles the full
+values array -- the same stage, not a random point in the run.
+
+**Resolution:** retried efficientnetb4 directly (bypassing `run_shap_n500.sh`, which
+hardcodes `--n-samples 500`) at n=400 -- completed successfully (exit 0, ~19 min,
+peaked around 47GB, i.e. comfortably under the ceiling this time). The student then
+asked for an additional, more conservative n=200 run for extra safety margin even
+though n=400 had already succeeded cleanly; also completed (exit 0, ~11 min). Both
+kept as separate result files (`shap_faithfulness_efficientnetb4_n400.json` and
+`_n200.json`) rather than treating one as replacing the other.
+
+**Operational mistake, caught immediately:** attempted to relaunch efficientnetb4 at
+n=400 by passing `--n-samples-override=400` as an extra positional argument to
+`run_shap_n500.sh`, which does not exist as a script option -- the script's `for arch
+in "$@"` loop simply treated it as a second (invalid) architecture name and re-ran
+efficientnetb4 at the hardcoded 500 again, heading toward the same OOM. Caught this
+by checking the actually-running process's command line before it got far, killed it
+(`kill -9`), and re-launched correctly by invoking `src.run_shap_explain` directly
+with `--n-samples 400` instead of going through the 500-only wrapper script.
+
+**Result -- final n=500/n=400 comparison (headline numbers), with n=200 as an
+efficientnetb4 cross-check:**
+
+| Architecture | n | Grad-CAM IoU | SHAP IoU | Grad-CAM Dice | SHAP Dice | Gap (GC-SHAP) | 95% CI | Winner |
+|---|---|---|---|---|---|---|---|---|
+| resnet50 | 500 | 0.305 | 0.208 | 0.435 | 0.325 | +0.097 | ±0.019 | Grad-CAM |
+| vgg16 | 500 | 0.202 | 0.255 | 0.309 | 0.387 | -0.053 | ±0.015 | SHAP |
+| efficientnetb4 | 400 | 0.255 | 0.241 | 0.374 | 0.368 | +0.014 | ±0.017 | tied (CI crosses 0) |
+| efficientnetb4 | 200 | 0.251 | 0.245 | 0.368 | 0.373 | +0.007 | ±0.025 | tied (CI crosses 0) |
+
+**Honest conclusion:** every number here is consistent with, and tighter than, the
+n=150 entry's conclusion -- nothing flipped. resnet50's Grad-CAM-favouring gap grew
+slightly (+0.079 at n=150 -> +0.097 at n=500) and remains clearly non-zero. vgg16's
+SHAP-favouring gap is essentially unchanged (-0.059 at n=150 -> -0.053 at n=500) and
+remains clearly non-zero -- this is now corroborated across three independent sample
+sizes (15, 150, 500) with the same direction and similar magnitude each time, about as
+solid as this project's evidence gets. efficientnetb4's near-zero gap is now
+corroborated across *four* sample sizes (150: +0.004, 200: +0.007, 400: +0.014, and
+the earlier n=15 which was itself noisy) -- consistently near zero and always crossing
+zero at 95% confidence, which is a genuine, repeatedly-confirmed tie rather than an
+unresolved question that a larger sample might still resolve one way. The dissertation
+finding stands as: **vgg16 favours SHAP, resnet50 favours Grad-CAM, efficientnetb4
+shows no reliable difference between the two methods** -- now on the project's largest
+XAI-faithfulness sample sizes to date.
+
+**Where uncertain / stuck:**
+- The ~57GiB cgroup limit is specific to this pod/session and not a property of the
+  codebase -- a different pod (or the same pod after a restart) could have a
+  different limit, so `--n-samples 500` should not be assumed safe for efficientnetb4
+  on any arbitrary future pod without re-checking `/sys/fs/cgroup/memory.max` first.
+- Did not modify `run_shap_explain.py` to batch/stream images instead of holding the
+  whole array in memory, which would remove the ceiling entirely -- treated as
+  out of scope for this session since the immediate goal (a large, reliable
+  efficientnetb4 sample) was achievable by simply lowering n.
+- As before, the new overlay images (up to 500 per architecture) were not pulled from
+  the pod or committed -- only the four new `shap_faithfulness_*.json` summary files.
+
+**Assumptions made:** That n=400's successful peak (~47GB) generalises as "safe" for
+efficientnetb4 on this pod -- reasonable given it completed cleanly with several GB of
+headroom below the ~57GiB ceiling, but not stress-tested at, say, n=450.
+
+**How output was verified:** Real exit codes checked for every run (`SHAP_N500_EXIT`,
+`SHAP_N400_EXIT`, `SHAP_N200_EXIT`) before trusting any result file, exactly as
+established in the previous entry. The OOM diagnosis itself was verified by reading
+`/sys/fs/cgroup/memory.max` directly rather than assumed from the `exit 137` code
+alone (137 is consistent with SIGKILL but not proof of OOM specifically without the
+corroborating cgroup limit and the RSS-climbing-to-the-limit pattern observed via
+repeated `ps aux` checks during the run).
+
+**What was learned / should change next time:** `free -h` inside a container can
+silently report the *host's* memory rather than the container's actual cgroup-enforced
+limit -- when diagnosing an unexplained SIGKILL (exit 137) on a containerised pod,
+check `/sys/fs/cgroup/memory.max` directly rather than trusting `free`. Separately,
+before reusing an existing wrapper script for a different parameter value, check
+whether the script actually exposes that parameter (`run_shap_n500.sh` had no
+`--n-samples` override) rather than assuming an extra CLI argument will be honoured --
+passing an unrecognised flag as a positional argument silently got treated as a second
+architecture name instead of erroring, which could have wasted another ~15-20 minutes
+of GPU time if not caught by checking the live process command line immediately after
+launch.
