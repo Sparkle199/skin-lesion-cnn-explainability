@@ -1513,3 +1513,110 @@ estimate from earlier in the session -- worth cross-checking every new small-sam
 number against any existing larger-sample estimate for the same model before
 interpreting a cross-architecture comparison built on it, not just trusting that
 "same script, same sample size" implies comparable reliability across architectures.
+
+---
+
+## 2026-08-29 -- SHAP scaled to n=150 for all three architectures: the efficientnetb4
+## flip from the n=15 run does not survive a larger sample; vgg16's does
+
+**What happened:** Connected to a fresh Runpod GPU pod (RTX 4090) with this project's
+`/workspace/project` already present from a prior session, and used it to answer the
+open item from the previous entry -- scale SHAP from n=15 up to n=150 (matching the
+sample size already used for Grad-CAM's `*_faithfulness150` results) for all three
+architectures, since a small-sample flip in "which XAI method is more faithful" is not
+trustworthy on its own. Wrote `scripts/run_shap_n150.sh`, a thin wrapper around the
+existing `src.run_shap_explain --n-samples 150` that backs up any pre-existing result
+file before running and only promotes the new output to a `_n150.json` name if the run
+actually exits 0.
+
+**Operational hiccup, fixed before trusting any result:** the first attempt (all three
+architectures, launched via `nohup ... & disown` so the job would survive SSH
+disconnects) failed immediately for every architecture with
+`FileNotFoundError: data/raw/dataverse_files/HAM10000_metadata` -- the pod's
+`/workspace/project/data` symlink to `/workspace/data` was simply missing (not broken,
+absent entirely), apparently lost between this pod session and whatever created the
+project checkout. Recreated it (`ln -s /workspace/data /workspace/project/data`) and
+confirmed the actual data files were reachable through it. This also exposed a bug in
+the first version of `run_shap_n150.sh`: the rename step ran unconditionally, so on a
+crashed run it renamed the *pre-existing* n=15 result file to the `_n150.json` name --
+silently mislabelling n=15 data as n=150. Caught this before committing anything by
+noticing the "new" `_n150.json` files were byte-identical in size to the n=15 backups
+and shared their original timestamps. Fixed the script to check the run's real exit
+code before renaming, deleted the mislabelled files, and re-ran cleanly. All three
+architectures completed with real exit code 0 on the second attempt (~21 minutes
+wall-clock total, sequential, single GPU: resnet50 ~5 min, efficientnetb4 ~10 min,
+vgg16 ~6 min).
+
+**Result -- n=150 mean IoU, compared to the n=15 figures from the previous entry:**
+
+| Architecture | n=15 Grad-CAM / SHAP (winner) | n=150 Grad-CAM / SHAP (winner) | n=150 Grad-CAM / SHAP Dice |
+|---|---|---|---|
+| resnet50 | 0.293 / 0.259 (Grad-CAM) | 0.294 / 0.215 (Grad-CAM) | 0.422 / 0.337 |
+| efficientnetb4 | 0.185 / 0.273 (SHAP) | 0.259 / 0.255 (**tied**) | 0.379 / 0.385 |
+| vgg16 | 0.200 / 0.218 (SHAP, narrow) | 0.195 / 0.255 (SHAP, clearer) | 0.301 / 0.384 |
+
+To judge whether each gap is real rather than sampling noise, computed the paired
+per-image (Grad-CAM IoU - SHAP IoU) difference, its standard deviation, and the
+resulting 95% CI on the mean gap at n=150:
+
+| Architecture | Mean gap (GC-SHAP) | 95% CI at n=150 | Crosses zero? |
+|---|---|---|---|
+| resnet50 | +0.079 | [0.046, 0.112] | No -- Grad-CAM genuinely more faithful |
+| efficientnetb4 | +0.004 | [-0.024, 0.032] | Yes -- genuine tie, not unresolved noise |
+| vgg16 | -0.059 | [-0.088, -0.030] | No -- SHAP genuinely more faithful |
+
+**Honest conclusion, superseding the previous entry's "flips by architecture" framing:**
+efficientnetb4's n=15 result (SHAP winning by 0.088 IoU) does not survive a 10x larger
+sample -- at n=150 the two methods are statistically indistinguishable for this
+architecture, consistent with the caveat already flagged in the previous entry (this
+architecture's n=15 Grad-CAM figure was itself known to be an unrepresentative draw).
+vgg16's flip, by contrast, is real: SHAP is more faithful than Grad-CAM here, and the
+gap is larger and more confidently non-zero at n=150 than it appeared at n=15.
+resnet50 continues to clearly favour Grad-CAM. The corrected finding for the
+dissertation's interpretability discussion is therefore **not** "faithfulness ranking
+flips by architecture" as a general phenomenon, but "vgg16 specifically favours SHAP;
+resnet50 favours Grad-CAM; efficientnetb4 shows no reliable difference between the
+two" -- a real but more limited and more defensible claim.
+
+**Where uncertain / stuck:**
+- Did not investigate *why* vgg16 in particular favours SHAP while the other two
+  favour (or tie on) Grad-CAM -- plausibly related to VGG16's lack of skip
+  connections changing how localised Grad-CAM's last-conv-layer activations are
+  relative to SHAP's model-agnostic perturbation approach, but not confirmed.
+- The n=150 run also wrote up to 150 new Grad-CAM/SHAP overlay image pairs per
+  architecture to `results/xai_overlays/<arch>/` on the pod (rather than the 15
+  committed previously). These were **not** pulled into the repo or committed --
+  bringing in ~450-900 additional PNGs for a summary-statistics result would bloat
+  the repo for little benefit over the 15 overlay pairs already committed as visual
+  examples. Only the three `shap_faithfulness_<arch>_n150.json` summary files were
+  kept. The overlay images remain on the pod if needed later, but that pod is
+  ephemeral and they should be treated as not durably available.
+- Asked whether to go further to n=500: computed that the 95% CI would only narrow by
+  ~45% (SE scales as 1/sqrt(n)), and would not change any of the three conclusions
+  above (resnet50 and vgg16 already exclude zero; efficientnetb4 would very likely
+  still include zero). Not run, given the marginal benefit for roughly 3x the compute
+  cost.
+
+**Assumptions made:** None beyond the previous SHAP entries' (same normalisation,
+same `compute_overlap` comparison). Assumed the pod's missing `data` symlink was an
+environment artefact of this particular pod session rather than a project bug -- the
+symlink target (`/workspace/data`) existed with the expected files, only the link
+itself was absent, consistent with a fresh pod re-attaching a persistent volume
+without recreating a symlink that lives outside it.
+
+**How output was verified:** Real exit codes for all three architectures checked from
+the log (`SHAP_N150_EXIT[<arch>]=0`) before pulling any result file. The mislabelling
+bug in the first attempt was caught by comparing file sizes/timestamps against the
+known n=15 backups before trusting the numbers, not after. Mean IoU/Dice and the
+paired-difference confidence intervals were computed directly from the 150-row result
+files (`.venv/bin/python3` on the pod), not eyeballed from console output.
+
+**What was learned / should change next time:** A background job launched with
+`nohup ... & disown` protects against SSH disconnects but not against environment
+drift between pod sessions (the missing symlink) -- worth a quick sanity check (e.g.
+`ls data/` or a 1-image dry run) before launching a long unattended job on a pod,
+rather than discovering a missing dependency only after all three architectures have
+already failed. Separately: a script step that renames/moves a result file should
+always gate on the producing command's actual exit code, never on "does a file exist
+at the expected path" alone -- the latter can silently succeed against a stale file
+left over from a previous, unrelated run.
