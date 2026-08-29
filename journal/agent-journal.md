@@ -1725,3 +1725,64 @@ passing an unrecognised flag as a positional argument silently got treated as a 
 architecture name instead of erroring, which could have wasted another ~15-20 minutes
 of GPU time if not caught by checking the live process command line immediately after
 launch.
+
+---
+
+## 2026-08-29 (continued) -- Formal paired 95% CI on the final Grad-CAM-vs-SHAP
+## faithfulness gap, computed directly from the committed n=500/n=400/n=200 result
+## files (no new SHAP or Grad-CAM run)
+
+**What happened:** The previous entry's summary table already quoted a gap and a
+95% CI per architecture, but folded into the results table rather than shown with
+the same explicit per-architecture methodology (mean gap, SD of paired differences,
+SE, CI bounds) that the n=150 entry used earlier. Re-ran that exact method -- paired
+per-image (Grad-CAM IoU - SHAP IoU) difference, SD of that difference, SE =
+SD/sqrt(n), 95% CI = mean +/- 1.96 x SE -- as its own documented, independently
+verifiable step, reading directly from the four already-committed result files
+(`shap_faithfulness_resnet50_n500.json`, `_vgg16_n500.json`,
+`_efficientnetb4_n400.json`, `_efficientnetb4_n200.json`). No SHAP or Grad-CAM run
+was re-executed; this is purely a recomputation over existing per-image data.
+
+**Result:**
+
+| Architecture (n) | Mean gap (GC-SHAP) | SD of paired diff | SE | 95% CI | Excludes zero? |
+|---|---|---|---|---|---|
+| resnet50 (n=500) | +0.0967 | 0.2124 | 0.0095 | [0.0781, 0.1153] | Yes -- Grad-CAM more faithful |
+| vgg16 (n=500) | -0.0527 | 0.1664 | 0.0074 | [-0.0673, -0.0381] | Yes -- SHAP more faithful |
+| efficientnetb4 (n=400) | +0.0142 | 0.1776 | 0.0089 | [-0.0032, 0.0316] | No -- tied |
+| efficientnetb4 (n=200) | +0.0067 | 0.1788 | 0.0126 | [-0.0181, 0.0315] | No -- tied |
+
+These figures match the previous entry's rounded summary-table gap/CI values
+(resnet50 +0.097 +/-0.019, vgg16 -0.053 +/-0.015, efficientnetb4 n400 +0.014 +/-0.017,
+n200 +0.007 +/-0.025) to the precision that entry reported -- this pass adds the full
+SD/SE breakdown and the explicit lower/upper bounds rather than just the +/- margin,
+and independently reconfirms none of the four conclusions changed.
+
+**Honest conclusion:** unchanged from the previous entry, now with the full interval
+math shown rather than summarised. resnet50 and vgg16 both have 95% CIs that clearly
+exclude zero in opposite directions (Grad-CAM and SHAP respectively); efficientnetb4's
+CI includes zero at both n=400 and n=200, consistent with every other sample size
+tried for this architecture (n=15, 150, 200, 400) -- a repeatedly-confirmed tie, not
+an artifact of any one run.
+
+**Where uncertain / stuck:** None -- this was a recomputation over already-verified,
+already-committed data, not a new experiment.
+
+**Assumptions made:** None beyond the paired-difference CI method already established
+and used without objection in the n=150 entry (95% CI via the normal approximation,
+mean +/- 1.96 x SE, appropriate here given each n is >= 150).
+
+**How output was verified:** Computed directly from the four committed JSON result
+files via `.venv/bin/python3` on the pod (not eyeballed, not re-derived from the
+earlier summary table). Cross-checked against the previous entry's rounded
+gap/CI figures before writing this entry -- they agreed, which is expected since
+both draw on the same underlying per-image data, but confirming that agreement
+before writing "unchanged" here rather than assuming it.
+
+**What was learned / should change next time:** When a result is first reported
+folded into a larger summary table (as the gap/CI figures were in the previous
+entry), it's worth a dedicated recomputation pass with the full intermediate
+values (SD, SE, exact bounds) shown on their own before treating the number as
+final for the dissertation -- catches transcription or rounding errors between the
+raw computation and the table, and gives a self-contained, independently checkable
+record rather than one only verifiable by re-deriving it from a denser table.
