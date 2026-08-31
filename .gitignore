@@ -12,6 +12,7 @@
 # --- Reference docs (not source, kept locally / submitted separately) ---
 AI_Coding_Governance_MSc (1).pdf
 project proposal- 30137304.docx
+writing/My literature reviewww.docx
 
 # --- Python caches ---
 __pycache__/
@@ -20,6 +21,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+writing/.mermaid_cache/
+
+# --- Office lock files ---
+~$*
 
 # --- Virtual environments ---
 .venv/

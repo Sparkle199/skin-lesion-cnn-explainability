@@ -1,0 +1,369 @@
+<title>The Simple Version</title>
+<style>
+  :root {
+    --paper:      #faf7f1;
+    --card:       #ffffff;
+    --card-edge:  rgba(33,27,19,0.08);
+    --ink:        #211b13;
+    --ink-2:      #5c5445;
+    --muted:      #8c8371;
+    --line:       #e9e2d2;
+    --accent:     #14636d;
+    --accent-ink: #ffffff;
+    --term-bg:    #fbe9cf;
+    --term-fg:    #7a4a12;
+    --term-bd:    #edcf9c;
+
+    --c1: #14636d; /* teal    -- ch1 */
+    --c2: #c1502e; /* coral   -- ch2 */
+    --c3: #6b4a8a; /* plum    -- ch3 */
+    --c4: #3f7a3d; /* moss    -- ch4 */
+    --c5: #b8791e; /* honey   -- ch5 */
+
+    --font-display: "Trebuchet MS", "Segoe UI", Verdana, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #1a1610;
+      --card:       #241f17;
+      --card-edge:  rgba(255,255,255,0.08);
+      --ink:        #f3ede0;
+      --ink-2:      #c9bfa9;
+      --muted:      #94896f;
+      --line:       #3a3222;
+      --accent:     #4bb2bd;
+      --accent-ink: #08181a;
+      --term-bg:    #4a3410;
+      --term-fg:    #f2caa0;
+      --term-bd:    #6b4c1c;
+
+      --c1: #4bb2bd;
+      --c2: #e07e57;
+      --c3: #a487c9;
+      --c4: #7cb56f;
+      --c5: #e0a94c;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #1a1610;
+    --card:       #241f17;
+    --card-edge:  rgba(255,255,255,0.08);
+    --ink:        #f3ede0;
+    --ink-2:      #c9bfa9;
+    --muted:      #94896f;
+    --line:       #3a3222;
+    --accent:     #4bb2bd;
+    --accent-ink: #08181a;
+    --term-bg:    #4a3410;
+    --term-fg:    #f2caa0;
+    --term-bd:    #6b4c1c;
+
+    --c1: #4bb2bd;
+    --c2: #e07e57;
+    --c3: #a487c9;
+    --c4: #7cb56f;
+    --c5: #e0a94c;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+
+  header.hero { text-align: center; margin-bottom: 3rem; }
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1rem;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2rem, 6vw, 2.9rem);
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  .dek {
+    font-size: 1.05rem;
+    color: var(--ink-2);
+    max-width: 34rem;
+    margin: 0 auto;
+  }
+
+  .roadmap {
+    display: flex;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+  }
+  .roadmap a {
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--ink-2);
+    background: var(--card);
+    border: 1px solid var(--line);
+    padding: 0.35rem 0.7rem;
+    border-radius: 99px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .roadmap a:hover { border-color: var(--dot, var(--accent)); color: var(--ink); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(20,15,5,0.04), 0 8px 24px -12px rgba(20,15,5,0.12);
+    padding: 2rem 2rem 1.9rem;
+    margin-bottom: 2.4rem;
+    position: relative;
+    scroll-margin-top: 1.5rem;
+  }
+  .card:nth-of-type(odd)  { transform: rotate(-0.35deg); }
+  .card:nth-of-type(even) { transform: rotate(0.35deg); }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.3rem;
+  }
+  .icon-badge {
+    flex-shrink: 0;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--dot) 14%, var(--card));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-badge svg { width: 1.6rem; height: 1.6rem; stroke: var(--dot); }
+
+  .card-head .num {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dot);
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+  .card-head h2 {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    margin: 0;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+
+  .card p { margin: 0 0 1.05rem; color: var(--ink-2); font-size: 1rem; }
+  .card p:last-child { margin-bottom: 0; }
+  .card p strong { color: var(--ink); font-weight: 700; }
+
+  .term {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    font-weight: 600;
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--term-bd);
+    border-radius: 5px;
+    padding: 0.02em 0.42em;
+    white-space: nowrap;
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 1.1rem;
+  }
+  .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  footer.note {
+    text-align: center;
+    margin-top: 2.5rem;
+    padding-top: 1.8rem;
+    border-top: 1px dashed var(--line);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer.note p { max-width: 30rem; margin: 0 auto; }
+
+  @media (max-width: 560px) {
+    .card { padding: 1.5rem 1.4rem 1.5rem; }
+    .card-head { gap: 0.7rem; }
+    .icon-badge { width: 2.5rem; height: 2.5rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kicker">A Plain-English Companion</div>
+    <h1>The Simple Version of a Not-So-Simple Project</h1>
+    <p class="dek">Same five chapters, none of the jargon. Every hard word gets explained first, with the real term shown right after it like <span class="term">this</span>, in case someone asks you to use it properly.</p>
+    <nav class="roadmap">
+      <a href="#ch1" style="--dot:var(--c1)">1 &middot; Why</a>
+      <a href="#ch2" style="--dot:var(--c2)">2 &middot; Who Else Tried</a>
+      <a href="#ch3" style="--dot:var(--c3)">3 &middot; The Setup</a>
+      <a href="#ch4" style="--dot:var(--c4)">4 &middot; What Happened</a>
+      <a href="#ch5" style="--dot:var(--c5)">5 &middot; What Now</a>
+    </nav>
+  </header>
+
+  <!-- Chapter 1 -->
+  <section class="card" id="ch1" style="--dot:var(--c1)">
+    <div class="card-head">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10" cy="10" r="6"></circle>
+          <line x1="14.8" y1="14.8" x2="20" y2="20"></line>
+        </svg>
+      </div>
+      <div>
+        <span class="num">Chapter 1</span>
+        <h2>Why We Even Did This</h2>
+      </div>
+    </div>
+
+    <p>Skin cancer is a sickness where skin cells start growing the wrong way and won't stop (<span class="term">cancer</span>). Doctors take close-up photos of skin spots (<span class="term">dermoscopic images</span>) to figure out if a spot is dangerous or not. Some dangerous spots look a lot like harmless ones, even to trained doctors, and catching the dangerous ones early makes a huge difference: caught early, almost everyone survives; caught late, most people don't.</p>
+
+    <p>So the idea was: what if we teach a computer to look at thousands of these photos and learn to guess what each spot is? The type of program that's good at "looking" at pictures and learning patterns from them is a <span class="term">CNN</span>, short for convolutional neural network. We built three different ones, kind of like three students who all study the same textbook but think a bit differently, and we wanted to see which "student" was best.</p>
+
+    <p>There was a second question we cared about just as much: if the computer says "this spot is dangerous," can it show its work? A computer that just says "trust me" isn't very useful to a doctor. So we also tested tools that make the computer point at the part of the photo it was actually looking at (<span class="term">XAI</span>, short for explainable AI). And a third question: does the computer work equally well for everyone, including people with darker skin, since most of its practice photos happen to be from lighter-skinned patients?</p>
+
+    <p><strong>Important:</strong> none of this was meant to become a real medical tool. It's an experiment to answer these three questions honestly, not a product.</p>
+  </section>
+
+  <!-- Chapter 2 -->
+  <section class="card" id="ch2" style="--dot:var(--c2)">
+    <div class="card-head">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 5.5c2-1 5-1 7 0v13c-2-1-5-1-7 0z"></path>
+          <path d="M20 5.5c-2-1-5-1-7 0v13c2-1 5-1 7 0z"></path>
+        </svg>
+      </div>
+      <div>
+        <span class="num">Chapter 2</span>
+        <h2>What Other People Had Already Tried</h2>
+      </div>
+    </div>
+
+    <p>Before starting, we looked at what other researchers had already done (a <span class="term">literature review</span>). Some of it was impressive: a few studies had already built computer programs as good as, or better than, real dermatologists at answering simple yes-or-no questions like "is this dangerous or not" (a <span class="term">binary classification</span> task).</p>
+
+    <p>But we noticed some gaps. Nobody had fairly compared our exact three "student" programs, <span class="term">ResNet-50</span>, <span class="term">EfficientNetB4</span>, and <span class="term">VGG-16</span>, on the hardest version of the test, where the computer has to pick from seven possible answers instead of just two (a <span class="term">seven-class</span> task), using the full, real, messy set of photos rather than a cleaned-up, easier version. Some earlier studies had quietly thrown away thousands of the "boring, common" photos to make their numbers look better, which isn't a fair test of the real world.</p>
+
+    <p>We also noticed that when researchers added a "show your work" feature, almost nobody checked whether the computer was pointing at the right spot. They just showed a picture with some highlighting and assumed it looked reasonable. And almost no one had tested whether their computer worked fairly across different skin tones.</p>
+
+    <p>So we set out to fix all three of those gaps at once.</p>
+  </section>
+
+  <!-- Chapter 3 -->
+  <section class="card" id="ch3" style="--dot:var(--c3)">
+    <div class="card-head">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7" cy="8" r="2.3"></circle>
+          <circle cx="17" cy="8" r="2.3"></circle>
+          <circle cx="12" cy="16" r="2.3"></circle>
+        </svg>
+      </div>
+      <div>
+        <span class="num">Chapter 3</span>
+        <h2>How We Set Up the Experiment</h2>
+      </div>
+    </div>
+
+    <p><strong>The photos.</strong> We used a big public collection of about 10,000 skin photos already checked by doctors (the <span class="term">HAM10000</span> dataset), plus a second, smaller collection of 656 photos chosen to include a much wider range of skin tones (the <span class="term">DDI</span> dataset). We also grabbed a completely separate set of 1,511 photos none of our computers had ever seen, just to double check our results weren't a fluke (<span class="term">ISIC2018</span>).</p>
+
+    <p><strong>The two games.</strong> Game one: look at a photo and pick one of seven specific skin conditions (the <span class="term">seven-class task</span>). Game two: simpler, just decide if a spot is dangerous or not (the <span class="term">binary task</span>), and this is the game where we added the extra diverse-skin-tone photos.</p>
+
+    <p><strong>Making it a fair test.</strong> All three computer students studied from the exact same practice photos, with the exact same rules, so any difference between them is really about how each "student" is built. We also made sure a photo of the same skin spot never showed up in both the practice pile and the test pile, since that would be like letting a student see the exam questions during homework (<span class="term">lesion-level splitting</span>).</p>
+
+    <p><strong>Testing fairness across skin tones.</strong> We tried three ways of using the diverse photos: show the computer zero of them and see how badly it does alone (<span class="term">zero-shot</span>), teach it the regular way first and add diverse-photo practice afterward (<span class="term">fine-tuning</span>), or mix the diverse photos in right from the start (<span class="term">joint training</span>).</p>
+
+    <p><strong>Checking the computer's "pointing."</strong> One tool works like a heat map showing which part of the photo grabbed the computer's attention most (<span class="term">Grad-CAM</span>). The other tests what happens to the answer if you hide different parts of the photo, a bit like a guessing game (<span class="term">SHAP</span>). Since HAM10000 photos come with a doctor-drawn outline around the actual spot (a <span class="term">segmentation mask</span>), we could measure exactly how much the computer's "pointing" overlapped with where the spot really was (<span class="term">IoU</span> and <span class="term">Dice</span> scores).</p>
+
+    <p><strong>Being careful with small tests.</strong> Testing on only 15 or 30 photos can be misleading, like judging a basketball player from 5 shots. So every interesting result from a small test got rerun on a much bigger pile, up to 500 photos, and checked with proper statistics (a <span class="term">confidence interval</span>) before we trusted it.</p>
+  </section>
+
+  <!-- Chapter 4 -->
+  <section class="card" id="ch4" style="--dot:var(--c4)">
+    <div class="card-head">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="19" x2="5" y2="11"></line>
+          <line x1="12" y1="19" x2="12" y2="6"></line>
+          <line x1="19" y1="19" x2="19" y2="14"></line>
+          <line x1="3" y1="19" x2="21" y2="19"></line>
+        </svg>
+      </div>
+      <div>
+        <span class="num">Chapter 4</span>
+        <h2>What We Actually Found</h2>
+      </div>
+    </div>
+
+    <p><strong>Which student did best at the hard game?</strong> On the seven-choice game, two students, <span class="term">ResNet-50</span> and <span class="term">VGG-16</span>, finished neck and neck, both getting roughly two out of every three photos right. The third, <span class="term">EfficientNetB4</span>, trailed a bit behind on basically every measurement.</p>
+
+    <p><strong>Which fairness strategy worked best?</strong> Mixing the diverse photos in from the start (<span class="term">joint training</span>) beat the other two approaches by a wide margin, for all three students. A computer that had never seen a diverse photo (<span class="term">zero-shot</span>) went from being right about 80 to 87 times out of 100 dangerous cases on its normal photos, down to just 12 to 48 times out of 100 on the diverse ones. That's a big, real fairness problem.</p>
+
+    <p><strong>Was it fair across every skin tone?</strong> Here's a twist: once we used "mix from the start," none of the three students showed a simple pattern of "worse on darker skin." One was actually best on the darkest skin-tone group we tested. This doesn't mean the fairness problem is solved, our groups were still fairly small, but the story is more complicated than a straight line from lighter to darker skin.</p>
+
+    <p><strong>Which "pointing" method was more trustworthy?</strong> A very first quick check suggested one method, <span class="term">SHAP</span>, was clearly better for EfficientNetB4. Rerun properly on hundreds of photos with real statistics, that difference vanished entirely, the two methods are basically tied for that student. For the other two, the differences held up: ResNet-50's heat map (<span class="term">Grad-CAM</span>) was genuinely more trustworthy for that computer, VGG-16's guessing game (<span class="term">SHAP</span>) for that one, even at the biggest sample size we tried.</p>
+  </section>
+
+  <!-- Chapter 5 -->
+  <section class="card" id="ch5" style="--dot:var(--c5)">
+    <div class="card-head">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path d="M14.8 9.2 10.6 11l-1.8 4.2 4.2-1.8z"></path>
+        </svg>
+      </div>
+      <div>
+        <span class="num">Chapter 5</span>
+        <h2>What It All Means, and What's Next</h2>
+      </div>
+    </div>
+
+    <p><strong>So what did we learn?</strong> Two students, ResNet-50 and VGG-16, are roughly equally good at the hard seven-choice game, and the third, EfficientNetB4, is consistently a bit behind. Training with diverse photos mixed in from the start clearly shrinks the fairness gap, though it doesn't erase it. And which "explain yourself" method works best genuinely depends on which computer you're asking, not a one-size-fits-all answer.</p>
+
+    <p><strong>What are the honest limits?</strong> We only trained each computer once per game, so we can't yet say how much was luck (that needs repeating the experiment several times, checking for <span class="term">variance</span>). Our diverse-skin-tone test groups were small, so those fairness numbers are a first clue, not the final word. No real dermatologist has yet looked at the computer's "pointing" and confirmed it makes clinical sense, only that it overlaps with a drawn outline. And again: this is a research experiment, never a real medical tool.</p>
+
+    <p><strong>What should happen next?</strong> Get real dermatologists to check whether the computer's explanations actually make sense (<span class="term">clinical validation</span>), not just whether they overlap with an outline. Repeat every experiment with different random starting points to rule out luck (<span class="term">multi-seed testing</span>). Collect a bigger, fairer set of diverse-skin-tone photos. And figure out why VGG-16 in particular prefers the guessing-game method, since right now we know that it does, but not exactly why.</p>
+  </section>
+
+  <footer class="note">
+    <p>This page simplifies a full research dissertation for a general audience. For the precise numbers, methods, and citations behind every sentence above, see the full chapters.</p>
+  </footer>
+
+</div>
