@@ -24,6 +24,12 @@ def load_results(results_dir: Path) -> dict:
     Missing files are skipped, not errored, since not all six (architecture x task)
     runs may exist yet -- the comparison table then shows gaps explicitly via None
     rather than only working once every run is complete.
+
+    For the seven-class task, a "_faithfulness150" result, where present, is loaded
+    alongside the base result and preferred for the faithfulness columns: Chapter 4
+    (Table 4.8) established that the original n=30 Grad-CAM sample moved substantially
+    once re-run at n=150, so this table should not report the n=30 figure as if it
+    were the reliable one when a larger-sample figure is available.
     """
     results = {}
     for architecture in ARCHITECTURES:
@@ -32,6 +38,11 @@ def load_results(results_dir: Path) -> dict:
             if path.exists():
                 with open(path) as f:
                     results[(architecture, task)] = json.load(f)
+            if task == "seven_class":
+                large_n_path = results_dir / f"{architecture}_{task}_faithfulness150.json"
+                if large_n_path.exists():
+                    with open(large_n_path) as f:
+                        results[(architecture, task, "faithfulness150")] = json.load(f)
     return results
 
 
@@ -53,7 +64,10 @@ def build_comparison_table(results: dict) -> list[dict]:
     rows = []
     for architecture in ARCHITECTURES:
         seven = results.get((architecture, "seven_class"))
+        seven_large_n = results.get((architecture, "seven_class", "faithfulness150"))
         binary = results.get((architecture, "binary"))
+
+        faithfulness_source = seven_large_n or seven
 
         rows.append(
             {
@@ -64,10 +78,19 @@ def build_comparison_table(results: dict) -> list[dict]:
                     seven["isic2018_test"]["accuracy"] if seven and "isic2018_test" in seven else None
                 ),
                 "faithfulness_iou": (
-                    seven["faithfulness"]["mean_iou"] if seven and "faithfulness" in seven else None
+                    faithfulness_source["faithfulness"]["mean_iou"]
+                    if faithfulness_source and "faithfulness" in faithfulness_source
+                    else None
                 ),
                 "faithfulness_dice": (
-                    seven["faithfulness"]["mean_dice"] if seven and "faithfulness" in seven else None
+                    faithfulness_source["faithfulness"]["mean_dice"]
+                    if faithfulness_source and "faithfulness" in faithfulness_source
+                    else None
+                ),
+                "faithfulness_n": (
+                    faithfulness_source["faithfulness"]["n"]
+                    if faithfulness_source and "faithfulness" in faithfulness_source
+                    else None
                 ),
                 "binary_accuracy": binary["validation"]["accuracy"] if binary else None,
                 "binary_skin_tone_accuracy_spread": _skin_tone_spread(binary) if binary else None,
@@ -96,7 +119,9 @@ def summarise(rows: list[dict]) -> str:
     faithfulness_rank = rank_by(rows, "faithfulness_iou")
 
     lines.append(f"Ranked by seven-class accuracy (highest first): {accuracy_rank}")
-    lines.append(f"Ranked by XAI faithfulness / mean IoU (highest first): {faithfulness_rank}")
+    lines.append(
+        f"Ranked by Grad-CAM faithfulness / mean IoU (highest first): {faithfulness_rank}"
+    )
 
     if not accuracy_rank or not faithfulness_rank:
         lines.append(
@@ -107,17 +132,25 @@ def summarise(rows: list[dict]) -> str:
     elif accuracy_rank[0] != faithfulness_rank[0]:
         lines.append(
             f"Trade-off: '{accuracy_rank[0]}' leads on accuracy but "
-            f"'{faithfulness_rank[0]}' leads on faithfulness -- no single architecture "
-            f"dominates both dimensions. The choice between them depends on how much "
-            f"weight accuracy vs. interpretability is given, which is a judgement call "
-            f"for the student and supervisor, not this script."
+            f"'{faithfulness_rank[0]}' leads on Grad-CAM faithfulness -- no single "
+            f"architecture dominates both dimensions. The choice between them depends "
+            f"on how much weight accuracy vs. interpretability is given, which is a "
+            f"judgement call for the student and supervisor, not this script."
         )
     else:
         lines.append(
-            f"'{accuracy_rank[0]}' leads on both accuracy and faithfulness among the "
-            f"architectures evaluated so far -- worth confirming this holds once all "
-            f"six (architecture, task) runs are available."
+            f"'{accuracy_rank[0]}' leads on both accuracy and Grad-CAM faithfulness "
+            f"among the six (architecture, task) runs now available."
         )
+
+    lines.append(
+        "Note: the faithfulness ranking above is Grad-CAM only, at the larger n=150 "
+        "sample where available in preference to the original n=30 sample (see "
+        "Chapter 4, Table 4.8, on why n=30 was not trusted on its own). It does not "
+        "include SHAP -- the full Grad-CAM-vs-SHAP comparison, which finds no single "
+        "architecture wins on faithfulness once SHAP is considered, is reported "
+        "separately in Chapter 4 Section 4.5 and Chapter 5 Section 5.2.3."
+    )
 
     return "\n".join(lines)
 

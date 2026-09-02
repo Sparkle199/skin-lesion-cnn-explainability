@@ -8,94 +8,36 @@ The methodology was not fixed at the outset and left unchanged. Two points in pa
 
 The methodology described in this chapter was designed specifically to close the five gaps identified in the literature review. First, no prior study was found to compare ResNet-50, EfficientNetB4, and VGG-16 under identical dataset and training conditions on the complete, unaltered seven-class HAM10000 distribution; Tahir et al. (2023) evaluated a four-class subset, and Aburaed et al. (2020) removed approximately 5,000 nevus images before evaluation, so neither study can attribute a performance difference to architecture alone. Second, no prior study combined classification performance analysis with a quantitative comparison of Grad-CAM and SHAP across multiple architectures on a multi-class dermoscopy task. Third, prior evaluation frameworks were found to rely on accuracy alone, or on accuracy supplemented with only one further metric, despite Codella et al. (2019) and Hauser et al. (2022) both establishing that this is inadequate under the class imbalance present in HAM10000. Fourth, the relationship between classification accuracy and explanation quality across architectures had not been investigated. Fifth, demographic generalisability across Fitzpatrick skin type had not been tested in any of the reviewed studies that used HAM10000 alone. How the methodology responds to each of these five gaps is described in the sections that follow.
 
-Figure 3.1 gives an overview of the full methodology described in this chapter, from infrastructure through to the statistical verification stage that closes it.
+Figure 3.1 gives a single, simplified overview of the full methodology described in this chapter, from the three source datasets through to the statistical verification stage that closes it. Later sections expand each stage shown here in full detail.
 
 ```mermaid
 flowchart TD
-    subgraph S0["0 — Infrastructure"]
-        A0["Runpod on-demand GPU pod<br/>RTX 4090, 24GB VRAM"]
+    subgraph DATA["Datasets"]
+        HAM["HAM10000<br/>10,015 images, 7 classes"]
+        DDI["DDI<br/>656 images, all skin tones"]
+        ISIC["ISIC2018<br/>1,511 images, test only"]
     end
 
-    subgraph S1["1 — Data Acquisition"]
-        A1a["HAM10000 archive"] --> A1b["images + metadata +<br/>segmentation masks + ISIC2018 test set"]
-        A1c["DDI archive"] --> A1d["656 images + ddi_metadata.csv"]
-    end
+    HAM --> T1["Seven-class task"]
+    HAM --> T2["Binary task"]
+    DDI --> T2
+    ISIC -.->|"external test"| T1
 
-    subgraph S2["2 — Metadata Loading &amp; Splitting"]
-        B1["ham10000.py :: load_metadata()"] --> B2["lesion_level_split()<br/>train_df / val_df"]
-        B3["ddi.py :: load_metadata()"] --> B4["split_ddi()<br/>ddi_train / ddi_val"]
-    end
+    T1 --> PREP["Data preparation<br/>lesion-level split, augmentation,<br/>class weighting / oversampling"]
+    T2 --> PREP
 
-    subgraph S3["3 — Task Corpus Construction"]
-        C1["Seven-class:<br/>train_df / val_df as-is"]
-        C2["Binary:<br/>build_binary_corpus()<br/>HAM relabelled + DDI merged"]
-    end
+    PREP --> MODEL["Model construction<br/>ResNet-50 / EfficientNetB4 / VGG-16<br/>ImageNet-pretrained"]
 
-    subgraph S4["4 — Imbalance Handling"]
-        D1["compute_class_weights()"]
-        D2["compute_steps_per_epoch()"]
-        D3["make_oversampled_binary_dataset()<br/>ddi_fraction = 0.3"]
-        D4["make_dataset()<br/>rotate / flip / zoom / brightness"]
-    end
+    MODEL --> TRAIN["Two-phase training<br/>frozen warmup, then fine-tune"]
 
-    subgraph S5["5 — Model Construction"]
-        E1["build_model()<br/>ResNet-50 / EfficientNetB4 / VGG-16<br/>ImageNet-pretrained, frozen backbone"]
-    end
+    TRAIN --> STRAT["DDI strategy branch, binary task<br/>zero-shot / fine-tuned / joint"]
+    TRAIN --> EVAL["Evaluation<br/>accuracy, kappa, ROC-AUC,<br/>skin-tone stratification"]
+    TRAIN --> XAI["Explainability<br/>Grad-CAM + SHAP,<br/>faithfulness scoring"]
 
-    subgraph S6["6 — Training (6 base runs)"]
-        F1["Phase 1: frozen-backbone warmup"] --> F2["unfreeze_top_layers()"] --> F3["Phase 2: fine-tune top N layers"] --> F4["models/&lbrace;arch&rbrace;_&lbrace;task&rbrace;.keras"]
-    end
-
-    subgraph S6B["6b — DDI Strategy Branch (binary task)"]
-        DA["Zero-shot:<br/>evaluate HAM-only model on full DDI"]
-        DB["Fine-tuned:<br/>finetune_ddi.py on DDI train split"]
-        DC["Joint:<br/>trained inside Stage 6 via oversampling"]
-    end
-
-    subgraph S7["7 — Evaluation"]
-        G1["predict_dataset()"] --> G2["accuracy / precision / recall / F1 / ROC-AUC / kappa"]
-        G1 --> G3["stratified_binary_metrics()<br/>by Fitzpatrick skin-tone group"]
-        G4["ISIC2018 held-out test<br/>(seven-class only)"] --> G1
-    end
-
-    subgraph S8["8 — XAI Generation"]
-        H1["gradcam.py :: make_gradcam_heatmap()"]
-        H2["shap_explain.py :: build_explainer() + explain_images()<br/>Partition explainer, real trained model"]
-        H3["faithfulness.py :: compute_overlap()<br/>IoU / Dice vs. HAM10000 segmentation masks"]
-    end
-
-    subgraph S8B["8b — Sample-Size Scaling &amp; Statistical Verification"]
-        I1["Grad-CAM faithfulness: n=30 &rarr; n=150<br/>(all 6 base models)"]
-        I2["SHAP faithfulness: n=15 &rarr; n=150 &rarr; n=500/400/200<br/>(cgroup memory ceiling forces per-arch cap)"]
-        I3["Paired 95% CI on Grad-CAM &minus; SHAP gap<br/>mean &plusmn; 1.96&times;SE, per architecture"]
-    end
-
-    A0 --> A1a
-    A0 --> A1c
-    A1b --> B1
-    A1d --> B3
-    B2 --> C1
-    B2 --> C2
-    B4 --> C2
-    C1 --> D4
-    C2 --> D1
-    C2 --> D2
-    C2 --> D3
-    D1 --> E1
-    D3 --> E1
-    D4 --> E1
-    E1 --> F1
-    F4 --> DA
-    F4 --> DB
-    F4 -.->|"binary task trained<br/>with DDI mixed in"| DC
-    F4 --> G1
-    G4 --> G1
-    F4 --> H1 --> H3
-    F4 --> H2 --> H3
-    H3 --> I1 --> I2 --> I3
+    XAI --> STATS["Statistical verification<br/>sample-size scaling, 95% CI"]
 ```
 
-*Figure 3.1: Overview of the methodology, from infrastructure through statistical verification.*
+*Figure 3.1: Simplified overview of the methodology, from datasets through statistical verification.*
 
 ## 3.2 Research Design
 
@@ -131,7 +73,7 @@ To provide an external check on the seven-class task that is independent of HAM1
 
 ### 3.3.4 Data Licensing and Ethical Compliance
 
-Both datasets used in this project are pre-existing, publicly released, and already anonymised. No new data was collected, no patients were contacted, and no participants were recruited for this project. Handling of both datasets was assessed against UK GDPR and the Data Protection Act 2018, with no re-identification of any subject attempted at any point. The project falls under Light Touch Ethical Review, appropriate for a study that uses only existing, anonymised, publicly available data and produces no clinical tool.
+Both datasets used in this project are pre-existing, publicly released, and already anonymised. No new data was collected, no patients were contacted, and no participants were recruited for this project. Handling of both datasets was assessed against UK GDPR and the Data Protection Act 2018, with no re-identification of any subject attempted at any point. The project falls under Light Touch Ethical Review, appropriate for a study that uses only existing, anonymised, publicly available data and produces no clinical tool. In line with University of South Wales policy, a Light Touch Ethical Review form for this project was completed in consultation with the project supervisor and submitted for approval in July 2026.
 
 ## 3.4 Task Formulation
 
@@ -141,27 +83,15 @@ The primary task classifies each HAM10000 image into one of the seven diagnostic
 
 ### 3.4.2 Secondary Task: Binary Malignant/Benign Classification
 
-The secondary task relabels HAM10000's seven diagnostic classes into a binary malignant or benign label, and combines the result with DDI's own native binary label to form a single, larger training corpus. The relabelling groups actinic keratosis, basal cell carcinoma, and melanoma as malignant, and benign keratosis-like lesions, dermatofibroma, melanocytic nevi, and vascular lesions as benign. This grouping treats actinic keratosis as malignant, a categorisation that some published work treats differently given its status as a precancerous rather than fully malignant lesion; this choice should be confirmed against supervisory guidance before the result is treated as final.
+The secondary task relabels HAM10000's seven diagnostic classes into a binary malignant or benign label, and combines the result with DDI's own native binary label to form a single, larger training corpus. The relabelling groups actinic keratosis, basal cell carcinoma, and melanoma as malignant, and benign keratosis-like lesions, dermatofibroma, melanocytic nevi, and vascular lesions as benign. This grouping treats actinic keratosis as malignant, a categorisation that some published work treats differently given its status as a precancerous rather than fully malignant lesion; this choice should be confirmed against supervisory guidance before the result is treated as final. Figure 3.2 shows one histopathology-confirmed example of each class from HAM10000, illustrating the kind of visual distinction the binary task asks each model to learn.
+
+![Figure 3.2: A benign melanocytic nevus alongside a malignant melanoma, both histopathology-confirmed, from HAM10000.](figures/fig_3_2_benign_malignant_example.png)
 
 Because DDI's images and skin-tone labels are only used in this second task, only the binary task's results can speak to how well a model generalises across skin tone. The primary seven-class task is trained on HAM10000 alone and therefore retains HAM10000's original skin-tone skew in full.
 
 ### 3.4.3 Rationale for Two Separate Tasks
 
-The decision to define two tasks, rather than one, follows directly from the taxonomy mismatch described above. Since a large share of DDI's 78 diagnoses cannot be mapped onto HAM10000's seven classes without introducing a substantial and unjustifiable labelling error, the alternative of folding DDI into a single seven-class corpus was rejected. Defining a second, binary task allows DDI to be used in full, under its own native and already-validated label, rather than under a forced relabelling that would compromise the seven-class task's label quality. Figure 3.2 summarises how the three datasets described above feed into the two tasks just defined.
-
-```mermaid
-flowchart TD
-    HAM["HAM10000<br/>10,015 images / 7,470 unique lesions<br/>7 diagnostic classes<br/>CC BY-NC 4.0"]
-    DDI["DDI<br/>656 images, 78 diagnoses<br/>native malignant/benign label<br/>skin_tone: FST I-II/III-IV/V-VI"]
-    ISIC["ISIC2018 Task 3<br/>1,511 images<br/>independent held-out test set"]
-
-    HAM -->|"lesion-level split<br/>(no leakage)"| T1["Primary task<br/>Seven-class classification<br/>HAM10000 only"]
-    HAM -->|"relabel via<br/>malignant = &lbrace;akiec,bcc,mel&rbrace;<br/>benign = &lbrace;bkl,df,nv,vasc&rbrace;"| T2["Secondary task<br/>Binary malignant/benign<br/>HAM10000 + DDI"]
-    DDI -->|"used natively,<br/>78 diagnoses don't map<br/>onto the 7-class taxonomy"| T2
-    ISIC -->|"external, lesion-disjoint<br/>test only"| T1
-```
-
-*Figure 3.2: How the three datasets feed into the two classification tasks.*
+The decision to define two tasks, rather than one, follows directly from the taxonomy mismatch described above. Since a large share of DDI's 78 diagnoses cannot be mapped onto HAM10000's seven classes without introducing a substantial and unjustifiable labelling error, the alternative of folding DDI into a single seven-class corpus was rejected. Defining a second, binary task allows DDI to be used in full, under its own native and already-validated label, rather than under a forced relabelling that would compromise the seven-class task's label quality. Figure 3.1 above summarises how the three datasets described above feed into the two tasks just defined.
 
 ## 3.5 Data Preparation
 
@@ -283,6 +213,10 @@ Grad-CAM (Selvaraju et al., 2017) was applied to every trained model as the firs
 
 SHAP (Lundberg and Lee, 2017), applied here using its Partition explainer for image data, was used as the second explainability method. SHAP estimates a per-pixel attribution value for each prediction, grounded in Shapley values from cooperative game theory, by measuring how a model's output changes as coalitions of image regions are masked and unmasked. Unlike Grad-CAM, SHAP treats the underlying model as a black box and does not require access to its internal gradients or layer structure, at a substantially higher computational cost per image.
 
+The two methods produce visibly different kinds of output. Figure 3.5 shows both applied to the same correctly classified melanoma image from ResNet-50: Grad-CAM produces a smooth, continuous heatmap centred on the lesion, while SHAP's Partition explainer produces a coarser, block-structured attribution map, a direct consequence of its superpixel-based masking approach rather than a sign that either method has failed.
+
+![Figure 3.5: The same image and model, Grad-CAM and SHAP side by side, showing the two methods' visibly different output styles.](figures/fig_3_3_gradcam_shap_method_example.png)
+
 ### 3.9.3 Quantitative Faithfulness Scoring (IoU and Dice)
 
 Rather than relying on visual inspection alone, both methods' output maps were scored quantitatively against a ground truth. Each map, whether produced by Grad-CAM or SHAP, was normalised to the range zero to one and thresholded at 0.5 to produce a binary attention region. This binary region was then compared against the ground-truth lesion segmentation mask supplied with HAM10000 using two overlap measures: Intersection over Union and the Dice coefficient. Because both methods' maps are normalised and thresholded in an identical way before this comparison, a difference in the resulting score reflects a genuine difference in how well each method localises the lesion, rather than an artefact of inconsistent preprocessing.
@@ -291,7 +225,7 @@ This quantitative faithfulness check could only be performed for HAM10000-derive
 
 ## 3.10 Statistical Verification Approach
 
-Figure 3.5 outlines the general verification cycle applied wherever a faithfulness estimate was computed in this study: a small sample is never trusted on its own, and is scaled up and checked with a formal interval estimate before being treated as a finding.
+Figure 3.6 outlines the general verification cycle applied wherever a faithfulness estimate was computed in this study: a small sample is never trusted on its own, and is scaled up and checked with a formal interval estimate before being treated as a finding.
 
 ```mermaid
 flowchart TD
@@ -307,7 +241,7 @@ flowchart TD
     H -->|"no"| J["Report as a genuine tie,<br/>not an unresolved question"]
 ```
 
-*Figure 3.5: The small-sample-first, verify-at-scale cycle applied throughout the explainability evaluation.*
+*Figure 3.6: The small-sample-first, verify-at-scale cycle applied throughout the explainability evaluation.*
 
 ### 3.10.1 Sample-Size Sensitivity in Faithfulness Estimates
 
@@ -321,11 +255,23 @@ At each sample size, the difference between Grad-CAM's and SHAP's IoU score was 
 
 Applying this procedure at the final sample sizes showed that the apparent EfficientNetB4 result from the initial 15-image comparison did not hold: at every larger sample size tested, the confidence interval on the Grad-CAM to SHAP difference included zero, indicating a genuine tie rather than a small-sample artefact that a larger sample would eventually resolve one way or the other. The ResNet-50 and VGG-16 results, by contrast, held and, in the case of VGG-16, strengthened as the sample size increased, with confidence intervals that excluded zero at every sample size from 150 images onward.
 
+### 3.10.3 Bootstrap Confidence Intervals, Threshold Calibration, and Paired Significance Testing
+
+The same verify-at-scale principle behind Sections 3.10.1 and 3.10.2 was applied to the classification and DDI strategy comparisons reported in Chapter 4, using three further, complementary statistical checks rather than treating either comparison's point estimates as settled on their own.
+
+First, a percentile bootstrap, 2,000 resamples with replacement, was computed on the seven-class validation accuracy and kappa for each architecture, and separately on the joint binary model's DDI held-out kappa for each architecture, producing a 95 percent confidence interval around each point estimate. An interval that overlaps another architecture's interval was treated as evidence the two cannot be statistically distinguished at the sample size available, rather than as an inconclusive result requiring a different test.
+
+Second, since every result reported in Sections 3.7 to 3.8 used the standard 0.5 decision threshold, each DDI strategy's predicted probabilities on the DDI held-out split were additionally swept across thresholds from 0.05 to 0.95 in steps of 0.05, and the threshold maximising kappa was recorded for each (architecture, strategy) combination. This checks whether a comparison between strategies is being made fairly, since two models can have a genuinely different discrimination ability even when their default-threshold kappa looks similar, or vice versa.
+
+Third, because all three DDI strategies for a given architecture are evaluated on the identical DDI held-out images, a paired test has more statistical power than an independent-samples bootstrap comparison to detect a genuine difference between them. McNemar's exact binomial test, appropriate at any discordant-pair count rather than only the larger counts the chi-square approximation requires, was applied to each pairwise strategy comparison's correctness at the default threshold, for every architecture.
+
 ## 3.11 Experimental Infrastructure
 
 Model training and the explainability experiments described above were run on an on-demand cloud GPU pod (Runpod), equipped with a single NVIDIA RTX 4090 GPU with 24 gigabytes of video memory. This departs from the original project proposal, which specified Kaggle's GPU infrastructure; the change was made for practical reasons related to session length and control over the runtime environment, and is recorded here as a deliberate deviation from the original plan.
 
 One infrastructure-level constraint materially affected the SHAP sample-size methodology described above. The compute environment enforced a container memory limit of approximately 57 gigabytes, distinct from and substantially lower than the host machine's total available memory. Because EfficientNetB4's larger 380 by 380 input resolution increases the memory required to hold a batch of SHAP attribution values in memory simultaneously, attempting to run the SHAP faithfulness evaluation for EfficientNetB4 at the same 500-image sample size used for the other two architectures exceeded this limit and terminated the process before it could complete. EfficientNetB4's SHAP evaluation was consequently run at a maximum of 400 images rather than 500, a difference that is noted wherever EfficientNetB4's results are reported in this dissertation, so that the reader is not left to assume all three architectures were evaluated at an identical sample size.
+
+Beyond the analyses above, the project also includes an interactive demonstrator built with Streamlit, added after the original proposal to make the interpretability comparison (Objective 5) tangible to a reader without requiring them to run the training or evaluation scripts themselves. The app loads each trained model checkpoint directly, accepts either an uploaded dermoscopic image or a bundled sample from the dataset, and renders a live Grad-CAM overlay alongside the model's class probabilities; separate pages expose the Chapter 4 metrics tables and the skin-tone-stratified DDI results directly from the underlying result files, so a reader can inspect the same evaluation outputs reported in this dissertation interactively. Example screenshots of the single-image demo page are given in Appendix B.
 
 ## 3.12 Chapter Summary
 

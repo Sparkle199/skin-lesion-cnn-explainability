@@ -100,7 +100,7 @@ def test_summarise_notes_single_leader_when_rankings_agree():
 
     summary = summarise(rows)
 
-    assert "leads on both accuracy and faithfulness" in summary
+    assert "leads on both accuracy and Grad-CAM faithfulness" in summary
 
 
 def test_summarise_handles_no_results_gracefully():

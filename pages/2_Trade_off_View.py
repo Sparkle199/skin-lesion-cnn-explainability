@@ -27,6 +27,11 @@ df = pd.DataFrame(trade_off["comparison_table"]).set_index("architecture")
 df.index = df.index.map({"resnet50": "ResNet-50", "efficientnetb4": "EfficientNetB4", "vgg16": "VGG16"})
 
 st.subheader("Seven-class accuracy vs. Grad-CAM faithfulness (IoU)")
+st.caption(
+    "Grad-CAM only, at the largest sample size available per architecture (n=150 "
+    "where present, else n=30) -- see the note below the table for why SHAP isn't "
+    "included here and where the full Grad-CAM-vs-SHAP comparison is reported."
+)
 st.bar_chart(df[["seven_class_accuracy", "faithfulness_iou"]])
 
 st.subheader("Binary task: accuracy vs. skin-tone consistency")
@@ -42,6 +47,7 @@ st.dataframe(
             "isic2018_test_accuracy": "{:.3f}",
             "faithfulness_iou": "{:.3f}",
             "faithfulness_dice": "{:.3f}",
+            "faithfulness_n": "{:.0f}",
             "binary_accuracy": "{:.3f}",
             "binary_skin_tone_accuracy_spread": "{:.3f}",
         },
