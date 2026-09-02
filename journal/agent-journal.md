@@ -1888,3 +1888,208 @@ precise, defensible claim than either "it's all noise" (overstates uncertainty, 
 the seed-to-seed consistency) or "resnet50 is definitively best" (understates the
 remaining sampling uncertainty, especially the near-tie with vgg16 in one seed) would
 have been.
+
+---
+
+## 2026-08-28 — Branching convention adopted; Tier 1 experiments (threshold
+## calibration, bootstrap CIs) find most "leader" claims are within noise
+
+**What happened:** Session resumed after another multi-day pause and a third pod
+migration (new IP/port again, same `RUNPOD_VOLUME_ID`, everything intact -- by now a
+routine, well-understood recovery: restore `/etc/environment`'s `PROJECT_DATA_DIR`,
+reconnect, done). Committed the previously-pending joint-model-wins finding (write-up
+completed 2026-08-18, held uncommitted across the pause) to `main` first, so `main`
+stayed the single source of completed, non-experimental truth.
+
+Student then asked for suggested experiments to improve results overall, and asked
+that each subsequent tier of experimentation get its own git branch, checked out
+before starting, so unrelated experimental changes cannot interfere with each other.
+Adopted this as a standing convention going forward: `main` holds only completed,
+decided work; each experiment tier gets `tier{N}-{short-description}` branched from
+`main`. Created and checked out `tier1-threshold-calibration-and-bootstrap-ci`.
+
+Proposed experiment tiers (recorded here for continuity, not all executed yet):
+Tier 1 (this entry) -- threshold calibration + bootstrap CIs, free/no retraining.
+Tier 2 -- class-weighted DDI fine-tuning; BatchNorm-unfrozen fine-tuning ablation.
+Tier 3 -- per-architecture unfreeze-fraction correction, LR scheduling/early stopping,
+focal loss, multiple seeds. Tier 4 -- SHAP (never run against a real model), larger
+Grad-CAM faithfulness sample size.
+
+**Tier 1 implementation:** `src/evaluate.py`'s saved results only contain aggregated
+metrics (confusion matrix, accuracy/kappa at the default 0.5 threshold) -- these
+cannot be re-thresholded or resampled after the fact, only raw per-example
+probabilities can. Wrote `src/export_predictions.py` (runs on the pod, requires
+TensorFlow): loads all 12 models needed (3 architectures x [seven-class + joint +
+zero-shot + fine-tuned binary]) in one process (so TF/XLA warmup is paid once, not 12
+times) and exports raw `y_true`/`y_proba` per example to `results/raw_predictions.json`.
+Critically, evaluated the zero-shot model on the *same* DDI held-out validation subset
+(`ddi.split_ddi`'s val split) the joint and fine-tuned models are scored on, rather
+than the zero-shot mode's usual full-656-image DDI set -- needed for a fair three-way
+comparison on identical examples. Then wrote `scripts/tier1_analysis.py` (pure
+numpy/sklearn, no TensorFlow dependency, but run via the pod's venv for consistency):
+percentile bootstrap (2000 resamples, seed 42) for accuracy/kappa CIs, and a 0.05-0.95
+threshold sweep (kappa-maximising) for the joint models specifically. Both ran for real
+on the pod; results pulled back and reviewed directly.
+
+**Finding 1 -- threshold calibration is a genuine free improvement:** the default 0.5
+cutoff is measurably wrong for all three joint models on DDI. Raising it improves
+kappa *and* accuracy simultaneously (no train/test trade-off): resnet50 0.356->0.431
+kappa (threshold 0.75), efficientnetb4 0.211->0.347 (threshold 0.90), vgg16
+0.304->0.396 (threshold 0.95). No retraining required -- this is purely a
+post-hoc decision-rule change on already-trained models.
+
+**Finding 2 -- most of the project's "leader" claims are statistically indistinguishable
+from noise at current sample sizes:**
+- Seven-class architecture ranking (n=1490 validation images): resnet50 accuracy 0.658
+  [0.634,0.681], vgg16 0.640 [0.615,0.665], efficientnetb4 0.630 [0.605,0.653] -- **all
+  three 95% CIs overlap.** The "resnet50 leads" claim from every earlier entry and the
+  README/spec is not statistically supported by this single run; kappa CIs overlap
+  identically.
+- DDI joint-vs-zero-shot-vs-finetuned (n=99 held-out DDI images, small by necessity --
+  DDI is only 656 images total): joint has the highest kappa point estimate for *all
+  three* architectures (resnet50 0.356 vs. 0.154/0.167; efficientnetb4 0.211 vs.
+  0.169/0.083; vgg16 0.304 vs. 0.015/0.071), but every individual pairwise CI overlaps
+  too, given n=99's width. The consistent direction across three independent
+  architecture experiments is itself suggestive of a real effect (pure noise would not
+  be expected to favour joint in all three), but is not, on its own, proof at the
+  per-comparison level -- a paired test (McNemar's, since all three approaches were
+  scored on the identical 99 examples) would have more statistical power than
+  independent bootstrapping and is the natural next check, not yet done.
+
+**Where uncertain / stuck:**
+- The independent-bootstrap-CI approach used here is conservative for paired
+  comparisons (same models evaluated on the same examples) -- a paired test was
+  identified as more appropriate but not implemented in this pass, to keep Tier 1
+  scoped to what was asked (threshold calibration + bootstrap CIs) rather than scope-
+  creeping into a new statistical method mid-tier.
+- Threshold calibration was only run for the joint models (the recommended approach) --
+  whether the zero-shot/fine-tuned models would show similar or different optimal
+  thresholds, and whether their kappa would close the gap to joint's *calibrated*
+  (not default-threshold) kappa, is unmeasured.
+
+**Assumptions made:** That evaluating the zero-shot model on the DDI held-out subset
+(rather than the full 656-image set `src.evaluate_ddi --mode zero_shot` normally uses)
+is the correct choice for *this specific* three-way comparison -- deliberate, not
+accidental: the bootstrap/threshold analysis needs all three approaches scored on
+identical examples to be comparable at all; `src.evaluate_ddi`'s own saved results
+(full-DDI zero-shot) remain the correct number to cite for "how does the zero-shot
+model generalise to all of DDI," a different question this analysis doesn't replace.
+
+**How output was verified:** Both scripts ran for real on the pod (real exit codes,
+real printed output read directly, not inferred from a wrapper). Progress lines
+("resnet50: seven_class done (1490 examples)", etc.) were checked against expected
+counts (1490 = the known seven-class validation size; 99 = 15% of 656, matching
+`ddi.split_ddi`'s default `val_fraction=0.15`) before trusting the exported file, not
+just checked for file existence.
+
+**Self-inflicted incident during this entry's own write-up:** used the `Write` tool
+(full-file overwrite) instead of `Edit` (targeted append) on this journal file without
+having re-read it fresh in the same turn, and the tool silently replaced all 1291
+existing lines with a one-line placeholder. Caught immediately via `git status --short`
+(showed 1291 deletions/1 insertion) before any commit or push happened, and recovered
+with `git checkout -- journal/agent-journal.md` -- git's working-tree state made this a
+clean, complete recovery with zero data loss, but only because the file was already
+committed on `main` and nothing had been pushed in the damaged state. Should have used
+`Edit` for this append from the start, consistent with every other journal update in
+this file's entire history; flagging this explicitly as a near-miss rather than
+quietly moving on, since the same mistake against an *uncommitted* file, or made right
+before a push, would not have been recoverable this cleanly.
+
+**What was learned / should change next time:** (1) The tier-branching convention the
+student requested is already paying off structurally -- Tier 1's export/analysis
+scripts and results are cleanly isolated on their own branch, so a bad Tier 1 result
+(or, as it turned out, a self-inflicted journal-file accident) cannot contaminate
+`main` or any future tier. (2) Never use `Write` on a file this session did not just
+read in full within the same turn, even for "just append text" -- `Edit` is the correct
+tool for any change to an existing file, full stop, and this incident is the concrete
+cost of not following that rule once. (3) A single-run point estimate (e.g. "resnet50
+leads") is not the same claim as a statistically-supported one -- worth running
+bootstrap CIs (or an equivalent) *before* stating a ranking as a project finding in
+future work, not as a retrospective check two tiers later.
+
+---
+
+## 2026-08-28 (continued) -- Tier 1 continuation: threshold-calibrate zero-shot/
+## fine-tuned too, and a paired McNemar's test -- the gap widens, but isn't provable
+
+**What happened:** Student asked to close two loops flagged when the four-tier
+experiment set was surveyed: (1) a paired significance test (McNemar's) for the DDI
+joint-vs-zero-shot-vs-finetuned comparison, since Tier 1's independent bootstrap CIs
+are conservative for a same-examples paired comparison; (2) threshold-calibrating the
+zero-shot and fine-tuned models too, not just joint, to check whether a fairer
+calibration comparison closes the gap the uncalibrated (0.5-threshold) comparison
+showed. Both needed only the raw predictions already exported in the original Tier 1
+pass (`results/raw_predictions.json`, still present on the pod) -- no new training, no
+GPU work at all, continued on the `tier1-threshold-calibration-and-bootstrap-ci` branch
+rather than opening a new tier.
+
+Extended `scripts/tier1_analysis.py`: factored the existing joint-only threshold sweep
+into a reusable `threshold_sweep()` function applied to all three DDI approaches, and
+added `mcnemar_test()` (exact binomial McNemar's test on paired correctness, the
+statistically appropriate test here since all three approaches are scored on the
+identical 99 DDI held-out examples -- a plain independent-samples test like bootstrap
+CI is not designed for this).
+
+**Finding 1 -- calibrating the alternatives does not close the gap to joint; if
+anything it widens.** Even at each approach's own kappa-maximising threshold (not the
+uncalibrated 0.5 default), joint remains clearly ahead for every architecture:
+
+| Architecture | Joint (best-calibrated kappa) | Zero-shot (best-calibrated) | Fine-tuned (best-calibrated) |
+|---|---|---|---|
+| resnet50 | 0.431 | 0.180 | 0.249 |
+| efficientnetb4 | 0.347 | 0.232 | 0.208 |
+| vgg16 | 0.396 | 0.228 | 0.200 |
+
+This rules out the possibility that joint's advantage was an artefact of the
+zero-shot/fine-tuned models simply having a worse default decision threshold -- even
+given every approach its fairest possible threshold, joint's discrimination ability is
+still substantially better.
+
+**Finding 2 -- but no pairwise comparison reaches statistical significance under a
+paired test, for any architecture.** McNemar's exact binomial test on the (uncalibrated,
+0.5-threshold) predictions found every pairwise p-value >= 0.48 (most much higher, up
+to 1.0) across all three architectures and all three pairs (joint-vs-zero-shot,
+joint-vs-finetuned, zero-shot-vs-finetuned). Discordant-pair counts (6-32 out of n=99)
+are simply too small, given how few DDI held-out examples exist, for this more
+statistically appropriate test to detect what the kappa point estimates and Finding 1
+both suggest is a real difference.
+
+**This is not a contradiction between the two findings -- it is the honest outcome of
+combining a kappa-based effect-size measure (imbalance-aware) with a small-sample
+significance test on raw correctness.** The complete, defensible statement for the
+dissertation: three independent lines of evidence now point toward joint training
+being genuinely better (its kappa lead survives fair calibration of all three
+approaches here; its ranking held across 3 independently-trained seeds per
+architecture, Tier 3; its precision/recall balance was already more even in the
+original comparison) -- but DDI's small size (656 images total, 99 held out) means no
+single formal significance test on this dataset can currently prove the difference is
+not chance. This should be reported as a genuine dataset-size limitation, not
+papered over by picking whichever test happens to show significance, and not
+retreated from into "we found nothing" either -- both would misrepresent what the
+evidence actually shows.
+
+**Where uncertain / stuck:** McNemar's test was run on the uncalibrated (0.5-threshold)
+predictions, matching the original bootstrap CI's basis -- a version run on each
+approach's own best-calibrated predictions (Finding 1's thresholds) was not attempted,
+and might behave differently given the different, more separated decision boundaries;
+not done here to keep this pass scoped to what was asked.
+
+**Assumptions made:** That the exact binomial form of McNemar's test (rather than the
+chi-square approximation) is the correct choice throughout, given discordant-pair
+counts as low as 6 in some architecture/pair combinations -- the exact test remains
+valid at any discordant-pair count, where the chi-square approximation is only
+recommended above roughly 25, so using the exact form uniformly avoids needing to
+switch tests case-by-case.
+
+**How output was verified:** Real script execution on the pod, full console output
+read directly (all threshold-calibration and McNemar rows), `results/
+tier1_calibration_bootstrap.json` pulled and available for direct inspection.
+
+**What was learned / should change next time:** A statistically rigorous analysis can
+produce a result that is genuinely inconclusive by the most appropriate formal test,
+even when every other angle points the same direction -- the right response is to
+report that combination honestly (multiple consistent signals, no single test proves
+it, sample size is the limiting factor) rather than either overstating confidence from
+the consistent point estimates or discarding those point estimates because one test
+didn't reach significance. Both of those simpler stories would have been easier to
+write and less accurate.
