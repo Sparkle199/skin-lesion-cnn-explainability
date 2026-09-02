@@ -9,9 +9,8 @@
 /ddi*/
 *.npz
 
-# --- Reference docs (not source, kept locally / submitted separately) ---
-AI_Coding_Governance_MSc (1).pdf
-project proposal- 30137304.docx
+# --- Reference docs / non-source clutter (not source, kept locally / submitted separately) ---
+/misc/
 writing/My literature reviewww.docx
 
 # --- Python caches ---
