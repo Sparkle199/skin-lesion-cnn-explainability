@@ -156,6 +156,16 @@ def main():
         default=0.3,
         help="Target share of each training batch drawn from DDI for the binary task (ignored for seven_class).",
     )
+    parser.add_argument(
+        "--output-suffix",
+        default="",
+        help="Appended to the output model/history filenames, e.g. '_seed2' -- for "
+        "re-running the same (architecture, task) multiple times without overwriting "
+        "the original (Tier 3 multi-seed variance check; no global TF seed is set "
+        "anywhere in this pipeline, so each invocation gets different weight "
+        "initialisation/dropout even though the data split and shuffle order stay "
+        "identical, since those are seeded separately -- see journal, 2026-08-28 entry).",
+    )
     args = parser.parse_args()
 
     model, history = train(
@@ -167,11 +177,11 @@ def main():
         args.batch_size,
         args.ddi_fraction,
     )
-    out_path = f"models/{args.architecture}_{args.task}.keras"
+    out_path = f"models/{args.architecture}_{args.task}{args.output_suffix}.keras"
     model.save(out_path)
     print(f"Saved trained model to {out_path}")
 
-    history_path = Path(f"results/history_{args.architecture}_{args.task}.json")
+    history_path = Path(f"results/history_{args.architecture}_{args.task}{args.output_suffix}.json")
     history_path.parent.mkdir(parents=True, exist_ok=True)
     with open(history_path, "w") as f:
         json.dump(history, f, indent=2, default=numpy_json_default)

@@ -1786,3 +1786,105 @@ values (SD, SE, exact bounds) shown on their own before treating the number as
 final for the dissertation -- catches transcription or rounding errors between the
 raw computation and the table, and gives a self-contained, independently checkable
 record rather than one only verifiable by re-deriving it from a denser table.
+
+---
+
+## 2026-08-28 — Tier 3: multi-seed variance check for the joint/mixed binary models
+
+**What happened:** Branched `tier3-multiseed-binary-joint-variance` from `main` (this
+branch's journal correctly lacks Tier 1/2's entries, per the isolation convention).
+Scoped Tier 3 down from the three candidate experiments proposed earlier (per-
+architecture unfreeze-fraction correction + LR scheduling/early stopping; focal loss;
+multi-seed variance) to just the multi-seed check -- the cheapest and most directly
+complementary to Tier 1's bootstrap-CI finding, given the size Tiers 1-2 already
+reached. Confirmed first that no global TF seed is set anywhere in this pipeline
+(`grep`'d `src/config.py`, `src/train.py`, `src/data/pipeline.py`,
+`src/models/build.py`) -- the lesion-level split and dataset shuffle order are both
+separately seeded (deterministic across runs), but model weight initialisation and
+dropout are not, so re-running `src.train` for the same (architecture, task) genuinely
+produces a different trained model each time. This is real but *narrower* than a
+typical "multi-seed" study (which usually also varies the data split/order) --
+documented explicitly as a scope caveat, not glossed over.
+
+Added `--output-suffix` to `src/train.py` (mirroring the pattern already used in
+`src/finetune_ddi.py` on the Tier 2 branch, reimplemented independently here since that
+branch's changes aren't visible from `main`). Wrote
+`scripts/run_tier3_multiseed.sh`: for each of the 3 architectures, trains 2 additional
+seeds of the joint binary model (existing `models/{arch}_binary.keras` counts as
+"seed 1"), evaluates each on the standard mixed HAM10000+DDI validation split
+(`src.evaluate_run`) and separately on the DDI-only held-out split
+(`src.evaluate_ddi --mode joint`) -- 18 steps total (6 trainings x [1 train + 2 evals]).
+All 18 completed with real exit code 0 (verified from log content).
+
+**Finding 1 -- training-seed variance is much smaller than test-set-sampling
+variance.** Across 3 independently trained resnet50 models, DDI-held-out kappa varies
+by only std=0.031 (0.305-0.361), while Tier 1's single-run bootstrap 95% CI for the
+same metric spanned roughly 0.42 wide (0.135-0.551). Same pattern for
+efficientnetb4 (std=0.032 vs. CI width ~0.39) and vgg16 (std=0.021 vs. CI width
+~0.40). The dominant source of uncertainty in this project's DDI-held-out numbers is
+the small evaluation set (n=99), not training-run-to-run stochasticity -- averaging
+more training seeds would narrow the estimate only modestly; a larger held-out set
+would help far more, but DDI's total size (656 images) is fixed and cannot be grown.
+
+**Finding 2 -- the resnet50 > vgg16 > efficientnetb4 DDI-kappa ranking holds
+consistently across all 3 independent seeds, for every pairwise comparison:**
+
+| Seed | resnet50 | vgg16 | efficientnetb4 |
+|---|---|---|---|
+| 1 (original) | 0.356 | 0.304 | 0.211 |
+| 2 | 0.361 | 0.340 | 0.273 |
+| 3 | 0.305 | 0.304 | 0.256 |
+
+resnet50 beats efficientnetb4 in all 3 seeds by a clear margin (0.145, 0.088, 0.049).
+resnet50 beats vgg16 in all 3 seeds too, but the margin shrinks to near-zero in seed 3
+(0.356 vs. 0.304=+0.052; 0.361 vs. 0.340=+0.021; 0.305 vs. 0.304=+0.001, essentially a
+tie). vgg16 beats efficientnetb4 in all 3 seeds. This is a useful complement to Tier
+1's finding, not a contradiction of it: a *single* run's bootstrap CI is too wide (given
+n=99) to prove the ranking on its own, but the *consistency of the same ordering across
+three independently trained models* is itself evidence the ranking reflects something
+more than one arbitrary lucky run -- while also showing the resnet50-vs-vgg16 gap
+specifically is small enough that it should not be reported as a confident distinction.
+
+The mixed HAM10000+DDI validation split (much larger, ~1550 images) shows the expected
+tighter spread (kappa std 0.003-0.036 across architectures), consistent with Finding 1
+-- sample size, not training stochasticity, is the main lever on estimate precision
+here too.
+
+**Where uncertain / stuck:**
+- This multi-seed check covers only the joint binary task (the recommended best
+  approach) -- the seven-class task's architecture ranking, which Tier 1 also found to
+  have fully overlapping bootstrap CIs, has not received the same multi-seed check.
+  Worth doing if a firmer seven-class ranking claim is needed later.
+- As noted above, this is training-initialisation variance only, not full multi-seed
+  variance (data split/order stayed fixed across all 3 seeds by construction, since
+  `config.RANDOM_SEED` and `pipeline.py`'s shuffle seed are both hardcoded). A "does the
+  ranking survive a different lesion-level split too" check would need actual code
+  changes (parameterising the split seed) and was out of scope for this tier.
+- The two other Tier 3 candidates from the original proposal (per-architecture
+  unfreeze-fraction correction with LR scheduling/early stopping; focal loss for the
+  seven-class task) were not attempted in this pass -- deferred, not abandoned, given
+  the scope this tier already reached.
+
+**Assumptions made:** That `--output-suffix` reimplemented independently in
+`src/train.py` (rather than merging in Tier 2's already-similar addition to
+`src/finetune_ddi.py`) is the correct approach given the tier-isolation convention --
+each branch is meant to stand alone from `main`, so duplicating a small, well-
+understood pattern across branches is the intended trade-off, not an oversight.
+
+**How output was verified:** All 18 steps' real exit codes checked directly from log
+content before trusting any result. All 18 result files pulled from the pod and the
+mean/std table above computed directly from their contents (Python's `statistics`
+module, not hand-calculated).
+
+**What was learned / should change next time:** Two genuinely different questions were
+being conflated under "is this ranking real": (1) "would a different test sample have
+given a different answer" (Tier 1's question, answered by bootstrap CI) and (2) "would
+a different trained model have given a different answer" (this tier's question,
+answered by multi-seed variance). They can have very different answers -- here,
+question 2's variance turned out much smaller than question 1's, meaning the honest
+summary is "the ranking is consistent across independently trained models, but the
+DDI evaluation set is too small to state the margin with high confidence" -- a more
+precise, defensible claim than either "it's all noise" (overstates uncertainty, ignores
+the seed-to-seed consistency) or "resnet50 is definitively best" (understates the
+remaining sampling uncertainty, especially the near-tie with vgg16 in one seed) would
+have been.
