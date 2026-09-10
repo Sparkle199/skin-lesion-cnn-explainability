@@ -10,7 +10,7 @@
 *.npz
 
 # --- Reference docs / non-source clutter (not source, kept locally / submitted separately) ---
-/misc/
+/trash/
 writing/My literature reviewww.docx
 
 # --- Python caches ---
@@ -49,3 +49,6 @@ mlruns/
 .DS_Store
 Thumbs.db
 .idea/
+
+# --- Local tool settings ---
+.claude/settings.local.json

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_LINE_SPACING, WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Cm
+from docx.shared import Pt, Cm, RGBColor
 from docx.oxml.ns import qn
 
 MERMAID_CACHE = Path(__file__).parent / ".mermaid_cache"
@@ -44,7 +44,7 @@ SRC = Path(__file__).parent / f"{STEM}.md"
 OUT = Path(__file__).parent / f"{STEM}.docx"
 
 FONT_NAME = "Times New Roman"
-FONT_SIZE = Pt(11)
+FONT_SIZE = Pt(12)
 
 
 def set_default_style(doc):
@@ -66,12 +66,13 @@ def set_default_style(doc):
         ("Heading 1", 18, True),
         ("Heading 2", 15, True),
         ("Heading 3", 13, True),
+        ("Heading 4", 12.5, True),
     ]:
         style = doc.styles[heading_name]
         style.font.name = FONT_NAME
         style.font.size = Pt(size)
         style.font.bold = bold
-        style.font.color.rgb = None
+        style.font.color.rgb = RGBColor(0, 0, 0)
         style.paragraph_format.space_before = Pt(14)
         style.paragraph_format.space_after = Pt(6)
         style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
@@ -86,7 +87,22 @@ INLINE_BOLD = re.compile(r"\*\*(.+?)\*\*")
 INLINE_ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
 
 
-def add_runs_with_inline_formatting(paragraph, text):
+BLACK = RGBColor(0, 0, 0)
+
+
+def strip_theme_color(run):
+    """Removes any w:themeColor reference on a run so an explicit RGB color
+    (e.g. black) actually wins, rather than the theme accent colour some
+    Word templates apply to heading runs by default."""
+    rpr = run._r.get_or_add_rPr()
+    color_el = rpr.find(qn("w:color"))
+    if color_el is not None:
+        for attr in ("w:themeColor", "w:themeTint", "w:themeShade"):
+            if color_el.get(qn(attr)) is not None:
+                del color_el.attrib[qn(attr)]
+
+
+def add_runs_with_inline_formatting(paragraph, text, force_color=None):
     """Splits text on **bold** and *italic* markers and adds runs accordingly."""
     tokens = []
     pos = 0
@@ -110,9 +126,29 @@ def add_runs_with_inline_formatting(paragraph, text):
             run.bold = True
         elif kind == "italic":
             run.italic = True
+        if force_color is not None:
+            run.font.color.rgb = force_color
+            strip_theme_color(run)
 
 
 IMAGE_LINE = re.compile(r"^!\[(.*?)\]\((.*?)\)$")
+
+
+def get_or_add_caption_style(doc, name):
+    """Word's TOC \\c switch needs a real SEQ field to collect entries, which
+    plain Caption-styled text does not have. Word's TOC \\t switch collects by
+    paragraph style name instead, so tables and figures each get their own
+    style (based on the built-in Caption style) so List of Tables and List of
+    Figures can be built as two separate \\t-driven fields."""
+    from docx.enum.style import WD_STYLE_TYPE
+    styles = doc.styles
+    try:
+        return styles[name]
+    except KeyError:
+        pass
+    new_style = styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+    new_style.base_style = styles["Caption"]
+    return new_style
 
 
 def add_figure(doc, caption, rel_path):
@@ -143,7 +179,8 @@ def add_figure_from_path(doc, caption, img_path):
     else:
         run.add_picture(str(img_path), width=width)
 
-    cap = doc.add_paragraph()
+    get_or_add_caption_style(doc, "Figure Caption")
+    cap = doc.add_paragraph(style="Figure Caption")
     cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
     cap.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
     cap.paragraph_format.space_after = Pt(12)
@@ -210,26 +247,33 @@ def build():
 
         if stripped.startswith("# "):
             p = doc.add_heading(level=1)
-            add_runs_with_inline_formatting(p, stripped[2:])
+            add_runs_with_inline_formatting(p, stripped[2:], force_color=BLACK)
             i += 1
             continue
 
         if stripped.startswith("## "):
             p = doc.add_heading(level=2)
-            add_runs_with_inline_formatting(p, stripped[3:])
+            add_runs_with_inline_formatting(p, stripped[3:], force_color=BLACK)
+            i += 1
+            continue
+
+        if stripped.startswith("#### "):
+            p = doc.add_heading(level=4)
+            add_runs_with_inline_formatting(p, stripped[5:], force_color=BLACK)
             i += 1
             continue
 
         if stripped.startswith("### "):
             p = doc.add_heading(level=3)
-            add_runs_with_inline_formatting(p, stripped[4:])
+            add_runs_with_inline_formatting(p, stripped[4:], force_color=BLACK)
             i += 1
             continue
 
         if stripped.startswith("**Table"):
-            p = doc.add_paragraph()
+            get_or_add_caption_style(doc, "Table Caption")
+            p = doc.add_paragraph(style="Table Caption")
             p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-            add_runs_with_inline_formatting(p, stripped)
+            add_runs_with_inline_formatting(p, stripped.strip("*"))
             i += 1
             continue
 
