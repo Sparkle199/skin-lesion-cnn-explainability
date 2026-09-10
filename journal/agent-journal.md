@@ -2093,3 +2093,105 @@ it, sample size is the limiting factor) rather than either overstating confidenc
 the consistent point estimates or discarding those point estimates because one test
 didn't reach significance. Both of those simpler stories would have been easier to
 write and less accurate.
+
+---
+
+## 2026-08-28 — Tier 2: class-weighted + BatchNorm-unfrozen DDI fine-tuning ablation
+
+**What happened:** Branched `tier2-class-weighted-finetune-and-bn-unfrozen-ablation`
+from `main` (not from `tier1`, per the isolation convention -- this branch's journal
+does not include Tier 1's entry as a result, which is expected, not a gap). Tested the
+two hypotheses named but never tried when the calibration-shift finding was written up
+(2026-08-18 entries): (1) `src.finetune_ddi.py` applied no class weighting on DDI's
+~74/26 benign/malignant train split, unlike every other training script in this
+project; (2) `unfreeze_top_layers` freezes BatchNorm even within the "unfrozen" top
+layer range, so every prior fine-tuning run left BN statistics calibrated to
+HAM10000, never adapting to DDI's different imaging distribution.
+
+Extended `src/finetune_ddi.py` with `--class-weight` and `--unfreeze-batchnorm` flags
+(both off by default, so the existing baseline models/results remain reproducible and
+were not overwritten), plus `--output-suffix` so each ablation variant saves to a
+distinctly-named model/results file. Wrote `scripts/run_tier2_ablation.sh`: for each of
+the 3 architectures, runs all 4 combinations against the baseline that's implicit in
+"no flags" (already trained) -- class-weighted only, BN-unfrozen only, and both
+combined -- 9 fine-tune + 9 evaluate steps total, sequential on the pod. All 18 steps
+completed with real exit code 0 (verified from actual log content, not the background
+wrapper).
+
+**Result -- both ablations help, "both combined" is best or tied-best for every
+architecture, but none close the gap to the joint/mixed model:**
+
+| Architecture | Approach | Accuracy | Kappa | ROC-AUC | Malignant Recall |
+|---|---|---|---|---|---|
+| resnet50 | joint (existing) | 0.747 | **0.356** | **0.764** | 0.538 |
+| resnet50 | baseline finetune | 0.717 | 0.167 | 0.584 | 0.269 |
+| resnet50 | + class-weight | 0.687 | 0.220 | 0.585 | 0.462 |
+| resnet50 | + BN-unfrozen | 0.737 | 0.226 | 0.607 | 0.308 |
+| resnet50 | + both | 0.737 | 0.247 | 0.606 | 0.346 |
+| efficientnetb4 | joint (existing) | 0.657 | **0.211** | **0.698** | 0.538 |
+| efficientnetb4 | baseline finetune | 0.667 | 0.083 | 0.615 | 0.269 |
+| efficientnetb4 | + class-weight | 0.636 | 0.146 | 0.628 | 0.462 |
+| efficientnetb4 | + BN-unfrozen | 0.596 | 0.092 | 0.606 | 0.462 |
+| efficientnetb4 | + both | 0.616 | 0.155 | 0.606 | 0.538 |
+| vgg16 | joint (existing) | 0.707 | **0.304** | **0.733** | 0.577 |
+| vgg16 | baseline finetune | 0.707 | 0.071 | 0.671 | 0.154 |
+| vgg16 | + class-weight | 0.687 | 0.201 | 0.673 | 0.423 |
+| vgg16 | + BN-unfrozen | 0.737 | 0.127 | 0.667 | 0.154 |
+| vgg16 | + both | 0.687 | 0.201 | 0.673 | 0.423 |
+
+Both hypotheses confirmed as real, positive effects: every ablation improves kappa
+over the plain fine-tuning baseline, for every architecture, and "both combined" is
+the best or tied-best variant in all three cases (resnet50 +0.080 kappa vs. baseline;
+efficientnetb4 +0.072; vgg16 +0.130, tied with class-weight-alone). Notably,
+efficientnetb4's "both" variant reaches malignant recall 0.538 -- exactly matching the
+joint model's recall -- though still with lower precision and much lower ROC-AUC.
+
+**However, this does not overturn the practical recommendation from the 2026-08-18
+entries.** Even the best-tuned fine-tuning variant still trails the joint/mixed model
+on kappa and, more tellingly, on ROC-AUC (a threshold-independent discrimination
+measure) for every architecture -- ROC-AUC barely moves from the baseline across all
+ablations (resnet50 0.584->~0.606, efficientnetb4 0.615->~0.606-0.628, vgg16
+0.671->~0.673), while joint's ROC-AUC (0.698-0.764) remains well clear of all of them.
+This is consistent with the earlier calibration-shift explanation: these ablations
+mostly shift *where* the decision boundary sits (raising recall, moving kappa), rather
+than genuinely improving the model's underlying ability to discriminate malignant from
+benign -- which joint training, having seen DDI throughout, still does substantially
+better.
+
+**Secondary finding -- BN-unfrozen alone is not uniformly beneficial.** For
+efficientnetb4 specifically, BN-unfrozen alone produced a *worse* ROC-AUC than the
+baseline (0.606 vs. 0.615) and only a marginal kappa gain (0.092 vs. 0.083) -- its
+benefit shows up mainly when combined with class weighting, not as a strong effect on
+its own. Class weighting alone is the more consistently helpful of the two individual
+ablations across all three architectures.
+
+**Where uncertain / stuck:** No bootstrap CIs were computed for these 9 new
+variants (would need `src/export_predictions.py` extended to cover them) -- the point
+estimates above are single-run numbers, same caveat as everything pre-Tier-1. Given
+Tier 1's finding that DDI's n=99 held-out set produces wide, often-overlapping CIs,
+some of the "both is best" orderings within this table (e.g. resnet50's close
+0.220/0.226/0.247 three-way kappa spread) likely would not survive a bootstrap check
+individually, even though the direction (ablations > baseline, joint > all fine-tuned
+variants) is consistent enough across three independent architectures to be suggestive.
+
+**Assumptions made:** That `--output-suffix` auto-derived from the flags
+(`_cw`/`_bn`/`_cw_bn`) is a sufficient naming scheme to prevent any collision with the
+existing baseline (`_ddi_finetuned.keras`, no suffix) or with each other -- verified by
+checking the actual saved filenames after each run, not assumed from the code alone.
+
+**How output was verified:** All 18 steps' real exit codes checked directly from log
+content (`grep`-extracted `*_EXIT[...]` lines) before trusting any result, consistent
+with this project's established verification discipline. All 18 result/history files
+pulled from the pod and the comparison table above built directly from their contents,
+not summarised from progress-log text.
+
+**What was learned / should change next time:** A "negative" prior finding (fine-tuning
+underperforms) can be partially, but not fully, an artefact of an under-specified
+baseline configuration rather than an inherent property of the approach -- worth
+distinguishing "X doesn't work" from "X, as I happened to implement it, doesn't work"
+before writing either into a dissertation's conclusions. The corrected, more precise
+finding is now: sequential fine-tuning *can* be meaningfully improved with standard
+fixes (class weighting, BN adaptation), but even improved, it does not yet match joint
+training's discrimination power on this dataset -- a more defensible, better-supported
+claim than either "fine-tuning is bad" or "fine-tuning just needed better
+hyperparameters" alone.

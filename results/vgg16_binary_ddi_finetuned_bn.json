@@ -1,0 +1,108 @@
+{
+  "architecture": "vgg16",
+  "mode": "finetuned",
+  "ham10000_validation_retention": {
+    "accuracy": 0.8060402684563759,
+    "precision_per_class": {
+      "benign": 0.9484435797665369,
+      "malignant": 0.48917748917748916
+    },
+    "recall_per_class": {
+      "benign": 0.8051197357555739,
+      "malignant": 0.8100358422939068
+    },
+    "f1_per_class": {
+      "benign": 0.8709245198749441,
+      "malignant": 0.6099865047233468
+    },
+    "roc_auc": 0.892621104629309,
+    "cohens_kappa": 0.4911815515648227,
+    "confusion_matrix": [
+      [
+        975,
+        236
+      ],
+      [
+        53,
+        226
+      ]
+    ]
+  },
+  "ddi_held_out_validation": {
+    "accuracy": 0.7373737373737373,
+    "precision_per_class": {
+      "benign": 0.7582417582417582,
+      "malignant": 0.5
+    },
+    "recall_per_class": {
+      "benign": 0.9452054794520548,
+      "malignant": 0.15384615384615385
+    },
+    "f1_per_class": {
+      "benign": 0.8414634146341463,
+      "malignant": 0.23529411764705882
+    },
+    "roc_auc": 0.667017913593256,
+    "cohens_kappa": 0.12745762711864406,
+    "confusion_matrix": [
+      [
+        69,
+        4
+      ],
+      [
+        22,
+        4
+      ]
+    ],
+    "skin_tone_stratified": {
+      "FST_III_IV": {
+        "n": 36,
+        "accuracy": 0.75,
+        "precision": {
+          "benign": 0.75,
+          "malignant": 0.75
+        },
+        "recall": {
+          "benign": 0.96,
+          "malignant": 0.2727272727272727
+        },
+        "f1": {
+          "benign": 0.8421052631578947,
+          "malignant": 0.4
+        }
+      },
+      "FST_I_II": {
+        "n": 32,
+        "accuracy": 0.6875,
+        "precision": {
+          "benign": 0.7333333333333333,
+          "malignant": 0.0
+        },
+        "recall": {
+          "benign": 0.9166666666666666,
+          "malignant": 0.0
+        },
+        "f1": {
+          "benign": 0.8148148148148148,
+          "malignant": 0.0
+        }
+      },
+      "FST_V_VI": {
+        "n": 31,
+        "accuracy": 0.7741935483870968,
+        "precision": {
+          "benign": 0.7931034482758621,
+          "malignant": 0.5
+        },
+        "recall": {
+          "benign": 0.9583333333333334,
+          "malignant": 0.14285714285714285
+        },
+        "f1": {
+          "benign": 0.8679245283018868,
+          "malignant": 0.2222222222222222
+        }
+      }
+    }
+  }
+}
